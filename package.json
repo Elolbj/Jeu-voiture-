@@ -1,0 +1,29 @@
+{
+  "name": "trajectoire",
+  "version": "1.0.0",
+  "description": "TRAJECTOIRE - jeu de course automobile 3D réaliste (mode histoire)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node tools/inline-build.mjs",
+    "preview": "vite preview",
+    "test": "node tools/sim-test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Elolbj/Jeu-voiture-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Elolbj/Jeu-voiture-/issues"
+  },
+  "homepage": "https://github.com/Elolbj/Jeu-voiture-#readme",
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "vite": "^8.3.4"
+  },
+  "type": "module"
+}
