@@ -117,6 +117,8 @@ export function showStory(app, chapterId = null) {
   app.showroom.offsetX = 2.4;
   // Introduction du chapitre (une fois)
   if (!p.story.seen[chap.intro] && chap.intro) {
+    // écran vide sous le dialogue (l'écran précédent s'efface)
+    app.ui.show({ el: h('div', { class: 'screen' }) });
     return playDialog(app, chap.intro, () => {
       if (chap.bonus && !p.story.done['bonus_' + chap.id]) {
         p.credits += chap.bonus;

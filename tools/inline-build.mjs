@@ -18,7 +18,8 @@ html = html.replace(/<script type="module"[^>]*src="\.?\/?(assets\/[^"]+\.js)"[^
 });
 html = html.replace(/<link rel="modulepreload"[^>]*>/g, '');
 // le script en fin de corps (après #app)
-const withScript = html.replace('</body>', `<script type="module">\n${js}\n</script>\n</body>`);
+// (fonction de remplacement : le code contient des séquences « $' » / « $& » à ne pas interpréter)
+const withScript = html.replace('</body>', () => `<script type="module">\n${js}\n</script>\n</body>`);
 fs.writeFileSync(path.join(dist, 'trajectoire.html'), withScript);
 
 // Version « page » : contenu de <head> (titre, polices, styles) + contenu de <body>
