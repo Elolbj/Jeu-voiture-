@@ -1,0 +1,21 @@
+:root {
+  --bg: #07090d;
+  --panel: rgba(12, 16, 24, 0.82);
+  --panel-solid: #0e131c;
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #eef2f8;
+  --muted: #8d98aa;
+  --accent: #3d8bff;
+  --accent2: #ffb627;
+  --red: #ff3b3b;
+  --green: #2ee59d;
+  --font: 'Barlow', 'Segoe UI', system-ui, sans-serif;
+  --cond: 'Barlow Condensed', 'Arial Narrow', 'Segoe UI', sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); overflow: hidden; }
+#app { position: fixed; inset: 0; }
+#viewport { position: absolute; inset: 0; }
+.game-canvas { display: block; }
+#ui { position: absolute; inset: 0; pointer-events: none; }
+#ui > * { pointer-events: auto; }
