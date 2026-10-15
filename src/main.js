@@ -29,6 +29,16 @@ if (hash.has('race')) {
     autopilot: hash.has('auto'),
   }, null);
   if (hash.has('cam')) app.settings.camera = hash.get('cam');
+} else if (hash.has('showroom')) {
+  // Vitrine de développement : #showroom=kaze_86&angle=0.7&h=1.9
+  const id = hash.get('showroom');
+  app.state = 'menu';
+  app.displayCar(id, hash.get('color') || buildSpec(id).paints[0]);
+  app.showroom.autoRotate = false;
+  app.showroom.camAngle = parseFloat(hash.get('angle') || '0.7');
+  app.showroom.camHeight = parseFloat(hash.get('h') || '1.9');
+  if (hash.has('dist')) app.showroom.camDist = parseFloat(hash.get('dist'));
+  requestAnimationFrame((t) => app.loop(t));
 } else {
   app.start();
 }

@@ -515,11 +515,14 @@ export function livery({ color, stripe = null, number = null, sponsor = null, st
       ctx.translate(cx, cy);
       if (flip) ctx.scale(-1, -1);
       ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#111';
+      ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.ellipse(0, 0, 46, 30, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, 50, 27, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.stroke();
       ctx.fillStyle = '#111';
-      ctx.font = 'bold 44px Arial';
+      ctx.font = 'bold 42px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(String(number), 0, 3);

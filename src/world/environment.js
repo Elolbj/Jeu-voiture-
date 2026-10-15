@@ -100,6 +100,7 @@ export class Environment {
     this.sun = sun;
 
     renderer.gl.toneMappingExposure = P.exposure;
+    renderer.bloomOwner = 'race';
     // Le ciel est en HDR (≈ 2 à 4) : seuil élevé de jour pour ne faire briller que le soleil et les reflets
     renderer.setBloom(P.bloom, this.night ? 1.4 : 9.0, 0.45);
 
