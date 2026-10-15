@@ -172,7 +172,7 @@ class BodyShape {
 
   halfWidth(t, z) {
     const st = this.st;
-    let w = this.Wmax * (0.8 + 0.2 * smoothstep(0, st.noseLen, t)) * (0.86 + 0.14 * smoothstep(1, 1 - st.tailLen - 0.04, t));
+    let w = this.Wmax * (0.8 + 0.2 * smoothstep(0, st.noseLen, t)) * (0.92 + 0.08 * smoothstep(1, 1 - st.tailLen - 0.03, t));
     if (st.flare) {
       for (const za of [this.zAxleF, this.zAxleR]) {
         const dz = (z - za) / (this.archR * 1.5);
@@ -329,18 +329,26 @@ function buildBodyGeometry(shape, spec) {
     }
   });
   // Bouchons avant / arrière
+  // Bouchons avant / arrière : sommets dupliqués pour une arête nette (normales propres)
   const capFan = (si, flip) => {
     const base = si * M;
     let cx = 0, cy = 0, cz = 0;
     for (let k = 0; k < M - 1; k++) { cx += pos[(base + k) * 3]; cy += pos[(base + k) * 3 + 1]; cz += pos[(base + k) * 3 + 2]; }
     cx /= M - 1; cy /= M - 1; cz /= M - 1;
+    const start = pos.length / 3;
+    for (let k = 0; k < M; k++) {
+      pos.push(pos[(base + k) * 3], pos[(base + k) * 3 + 1], pos[(base + k) * 3 + 2]);
+      uv.push(uv[(base + k) * 2], uv[(base + k) * 2 + 1]);
+      const c = col[(base + k) * 3];
+      col.push(c, c, c);
+    }
     const ci = pos.length / 3;
-    pos.push(cx, cy, cz + (flip ? 0.01 : -0.01));
+    pos.push(cx, cy, cz + (flip ? 0.012 : -0.012));
     uv.push(flip ? 1 : 0, 0.5);
     col.push(0.9, 0.9, 0.9);
     for (let k = 0; k < M - 1; k++) {
-      if (flip) idx.push(base + k, base + k + 1, ci);
-      else idx.push(base + k + 1, base + k, ci);
+      if (flip) idx.push(start + k, start + k + 1, ci);
+      else idx.push(start + k + 1, start + k, ci);
     }
   };
   capFan(0, false);
@@ -465,7 +473,7 @@ function tireGeometry(R, w) {
   }
   pts.push(new THREE.Vector2(rim + (R - rim) * 0.35, w * 0.5));
   pts.push(new THREE.Vector2(rim, w * 0.42));
-  const g = new THREE.LatheGeometry(pts, 40);
+  const g = new THREE.LatheGeometry(pts, 28);
   g.rotateZ(Math.PI / 2); // axe de révolution -> X
   WHEEL_GEO.set(key, g);
   return g;
@@ -507,11 +515,11 @@ function rimGeometry(R, w, style) {
     }
   }
   shape.holes = holes;
-  const face = new THREE.ExtrudeGeometry(shape, { depth: 0.025, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.008, bevelSegments: 2, curveSegments: 10 });
+  const face = new THREE.ExtrudeGeometry(shape, { depth: 0.025, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.008, bevelSegments: 1, curveSegments: 5 });
   face.rotateY(Math.PI / 2); // face orientée vers +X
   face.translate(w * 0.32, 0, 0);
   // Jante (fût)
-  const barrel = new THREE.CylinderGeometry(rr, rr, w * 0.82, 32, 1, true);
+  const barrel = new THREE.CylinderGeometry(rr, rr, w * 0.82, 20, 1, true);
   barrel.rotateZ(Math.PI / 2);
   // Moyeu
   const hub = new THREE.CylinderGeometry(hubR * 0.55, hubR * 0.7, 0.05, 16);
@@ -539,6 +547,7 @@ function buildWheel(spec, isLeft, mats, rimMat, caliperMat) {
   spin.add(barrel);
   const hub = new THREE.Mesh(rg.hub, rimMat);
   spin.add(hub);
+  const details = [barrel, hub];
   // Disque + étrier
   const discR = R * 0.68 * 0.82;
   const discGeo = WHEEL_GEO.get('disc' + discR.toFixed(3)) || new THREE.CylinderGeometry(discR, discR, 0.028, 28);
@@ -549,6 +558,7 @@ function buildWheel(spec, isLeft, mats, rimMat, caliperMat) {
   const cal = new THREE.Mesh(new THREE.BoxGeometry(0.06, discR * 0.55, discR * 0.95), caliperMat);
   cal.position.set(w * 0.16, discR * 0.55, discR * 0.35);
   steer.add(cal);
+  details.push(disc, cal);
   if (isLeft) {
     // miroir : la face de jante doit regarder vers l'extérieur
     steer.rotation.order = 'YXZ';
@@ -556,7 +566,7 @@ function buildWheel(spec, isLeft, mats, rimMat, caliperMat) {
     cal.position.x *= -1;
   }
   // Les faces en miroir inversent l'ordre des sommets : corriger via le côté du matériau
-  return { steer, spin, isLeft };
+  return { steer, spin, isLeft, details, face };
 }
 
 // ---------------------------------------------------------------------------
@@ -669,10 +679,12 @@ export class CarModel {
     const st = this.style;
     const H = shape.H;
     const p = {};
-    const add = (mesh, x, y, z) => {
+    this.detailMeshes = [];
+    const add = (mesh, x, y, z, detail = false) => {
       mesh.position.set(x, y, z);
-      mesh.castShadow = true;
+      mesh.castShadow = !detail;
       this.body.add(mesh);
+      if (detail) this.detailMeshes.push(mesh);
       return mesh;
     };
     // --- Optiques avant ---
@@ -690,30 +702,41 @@ export class CarModel {
       m.rotation.y = side * 0.35;
       m.rotation.x = st.lights === 'frog' ? -0.6 : -0.15;
     }
-    // --- Feux arrière ---
-    this.tailMat = new THREE.MeshPhysicalMaterial({ color: 0x5a0006, emissive: 0xff1a10, emissiveIntensity: 0.35, roughness: 0.2, metalness: 0.2, clearcoat: 1 });
-    const tT = 0.985;
-    shape.sectionPoint(tT, 0.2, p);
-    const yT = lerp(p.ys, shape.top(tT), 0.45);
+    // --- Feux arrière (sur la face arrière réelle de la carrosserie) ---
+    this.tailMat = new THREE.MeshPhysicalMaterial({ color: 0x6a0008, emissive: 0xff1a10, emissiveIntensity: 0.5, roughness: 0.15, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.05 });
+    const tT = 0.992;
+    shape.sectionPoint(tT, 0.3, p);
+    const zR = shape.zFront + shape.L + 0.004;
+    const topR = shape.top(tT);
+    const yT = lerp(p.ys, topR, 0.5);
+    const Wr = p.W;
+    const lens = (w, hgt, x, y, z) => {
+      const g = new THREE.SphereGeometry(0.5, 18, 8);
+      g.scale(w, hgt, 0.07);
+      return add(new THREE.Mesh(g, this.tailMat), x, y, z);
+    };
     if (st.tailLights === 'bar' || st.tailLights === 'blade') {
-      const g = new THREE.BoxGeometry(p.W * 1.75, st.tailLights === 'blade' ? 0.035 : 0.06, 0.04);
-      add(new THREE.Mesh(g, this.tailMat), 0, yT, p.z + 0.01);
-    }
-    for (const side of [-1, 1]) {
-      let g;
-      if (st.tailLights === 'round' || st.tailLights === 'quad') {
-        g = new THREE.CylinderGeometry(0.075, 0.075, 0.04, 20);
-        g.rotateX(Math.PI / 2);
-        add(new THREE.Mesh(g, this.tailMat), side * p.W * 0.72, yT, p.z + 0.01);
-        if (st.tailLights === 'quad') add(new THREE.Mesh(g, this.tailMat), side * p.W * 0.45, yT, p.z + 0.015);
-      } else if (st.tailLights === 'tall') {
-        g = new THREE.BoxGeometry(0.12, 0.26, 0.04);
-        add(new THREE.Mesh(g, this.tailMat), side * p.W * 0.8, yT + 0.08, p.z - 0.005);
-      } else {
-        g = new THREE.BoxGeometry(st.tailLights === 'oval' ? 0.22 : 0.32, 0.09, 0.04);
-        add(new THREE.Mesh(g, this.tailMat), side * p.W * 0.7, yT, p.z + 0.005);
+      const bh = st.tailLights === 'blade' ? 0.045 : 0.075;
+      lens(Wr * 1.78, bh, 0, yT, zR);
+      for (const side of [-1, 1]) lens(0.36, bh * 1.8, side * Wr * 0.72, yT, zR + 0.005);
+    } else if (st.tailLights === 'round' || st.tailLights === 'quad') {
+      for (const side of [-1, 1]) {
+        lens(0.17, 0.17, side * Wr * 0.7, yT, zR);
+        if (st.tailLights === 'quad') lens(0.17, 0.17, side * Wr * 0.42, yT, zR);
       }
+    } else if (st.tailLights === 'tall') {
+      for (const side of [-1, 1]) lens(0.14, 0.32, side * Wr * 0.7, yT + 0.06, zR - 0.025);
+    } else if (st.tailLights === 'oval') {
+      for (const side of [-1, 1]) lens(0.3, 0.13, side * Wr * 0.66, yT, zR);
+    } else {
+      // block / slim : larges optiques horizontales
+      for (const side of [-1, 1]) lens(st.tailLights === 'slim' ? 0.46 : 0.4, st.tailLights === 'slim' ? 0.09 : 0.14, side * Wr * 0.64, yT, zR);
     }
+    // Jupe arrière noire (pare-chocs bas / diffuseur)
+    const botR = shape.bottom(0.99, zR);
+    const valH = Math.min(0.14, Math.max(0.07, (p.ys - botR) * 0.3));
+    const val = new THREE.Mesh(new THREE.BoxGeometry(Wr * 1.5, valH, 0.06), mats.trim);
+    add(val, 0, botR + valH / 2 + 0.03, zR - 0.05);
     // --- Calandre / entrée d'air avant ---
     shape.sectionPoint(0.01, -0.3, p);
     const grille = new THREE.Mesh(new THREE.BoxGeometry(p.W * 1.3, 0.12, 0.08), mats.black);
@@ -723,10 +746,10 @@ export class CarModel {
       const plateGeo = new THREE.PlaneGeometry(0.52, 0.11);
       const front = new THREE.Mesh(plateGeo, mats.plate);
       front.rotation.y = Math.PI;
-      add(front, 0, shape.clear + 0.24, shape.zFront - 0.012);
+      add(front, 0, shape.clear + 0.24, shape.zFront - 0.012, true);
       const rear = new THREE.Mesh(plateGeo, mats.plate);
       shape.sectionPoint(0.995, 0, p);
-      add(rear, 0, lerp(shape.bottom(0.99, p.z), shape.top(0.99), 0.45), shape.zFront + shape.L + 0.012);
+      add(rear, 0, lerp(shape.bottom(0.99, p.z), shape.top(0.99), 0.45), shape.zFront + shape.L + 0.012, true);
     }
     // --- Rétroviseurs ---
     if (st.doors !== 0) {
@@ -736,7 +759,7 @@ export class CarModel {
         const mg = new THREE.SphereGeometry(0.075, 12, 8);
         mg.scale(1.1, 0.75, 0.6);
         const m = new THREE.Mesh(mg, this.paint);
-        add(m, side * (p.W * st.cabW + 0.1), st.belt * H + 0.06, p.z + 0.05);
+        add(m, side * (p.W * st.cabW + 0.1), st.belt * H + 0.06, p.z + 0.05, true);
       }
     }
     // --- Échappements ---
@@ -745,7 +768,7 @@ export class CarModel {
     exG.rotateX(Math.PI / 2);
     for (let i = 0; i < exN; i++) {
       const x = exN === 2 ? (i === 0 ? -0.45 : 0.45) * shape.Wmax * 0.9 : (i - 1.5) * 0.14 + (i < 2 ? -0.25 : 0.25);
-      add(new THREE.Mesh(exG, mats.chrome), x, shape.clear + 0.1, shape.zFront + shape.L - 0.02);
+      add(new THREE.Mesh(exG, mats.chrome), x, shape.clear + 0.1, shape.zFront + shape.L - 0.02, true);
     }
     // --- Aileron ---
     const deckT = (st.rearB + 1) / 2;
@@ -956,6 +979,16 @@ export class CarModel {
     this.paint.map = liv;
     this.cabinPaint.map = liv;
     this.paint.needsUpdate = this.cabinPaint.needsUpdate = true;
+  }
+
+  // Niveau de détail : 0 = complet, 1 = lointain
+  setLod(level) {
+    if (level === this.lod) return;
+    this.lod = level;
+    const far = level >= 1;
+    for (const w of this.wheels) for (const d of w.details) d.visible = !far;
+    if (this.interior) this.interior.visible = !far && this.interiorWanted !== false;
+    for (const d of this.detailMeshes || []) d.visible = !far;
   }
 
   setLights(on) {

@@ -7,19 +7,19 @@ import { radialSprite } from './textures.js';
 export const TIME_PRESETS = {
   day: {
     elev: 50, azim: 145, sun: 0xfff3e2, sunI: 3.1, sky: 0xbfd8ff, ground: 0x6b6450, hemiI: 0.9,
-    turbidity: 2.6, rayleigh: 1.1, mie: 0.004, mieG: 0.8, exposure: 0.62, fog: 0.00042, clouds: 0.35, bloom: 0.18,
+    turbidity: 2.6, rayleigh: 1.1, mie: 0.004, mieG: 0.8, exposure: 0.62, fog: 0.00026, clouds: 0.35, bloom: 0.1,
   },
   morning: {
     elev: 13, azim: 100, sun: 0xffd2a8, sunI: 2.7, sky: 0xb0c8f0, ground: 0x5d5546, hemiI: 0.75,
-    turbidity: 4.5, rayleigh: 1.6, mie: 0.006, mieG: 0.82, exposure: 0.62, fog: 0.00055, clouds: 0.3, bloom: 0.22,
+    turbidity: 4.5, rayleigh: 1.6, mie: 0.006, mieG: 0.82, exposure: 0.62, fog: 0.00035, clouds: 0.3, bloom: 0.14,
   },
   afternoon: {
     elev: 33, azim: 235, sun: 0xffe9cc, sunI: 3.0, sky: 0xb8d0f5, ground: 0x655d48, hemiI: 0.85,
-    turbidity: 3.2, rayleigh: 1.25, mie: 0.005, mieG: 0.8, exposure: 0.6, fog: 0.00045, clouds: 0.4, bloom: 0.2,
+    turbidity: 3.2, rayleigh: 1.25, mie: 0.005, mieG: 0.8, exposure: 0.6, fog: 0.0003, clouds: 0.4, bloom: 0.12,
   },
   sunset: {
     elev: 4.5, azim: 255, sun: 0xff9a50, sunI: 2.4, sky: 0x9ab0dd, ground: 0x4a3c34, hemiI: 0.6,
-    turbidity: 7, rayleigh: 2.6, mie: 0.009, mieG: 0.88, exposure: 0.72, fog: 0.0006, clouds: 0.45, bloom: 0.3,
+    turbidity: 7, rayleigh: 2.6, mie: 0.009, mieG: 0.88, exposure: 0.72, fog: 0.0004, clouds: 0.45, bloom: 0.2,
   },
   night: {
     elev: 38, azim: 200, sun: 0x9db4ff, sunI: 0.32, sky: 0x1a2440, ground: 0x0a0b10, hemiI: 0.22,
@@ -101,7 +101,7 @@ export class Environment {
 
     renderer.gl.toneMappingExposure = P.exposure;
     // Le ciel est en HDR (≈ 2 à 4) : seuil élevé de jour pour ne faire briller que le soleil et les reflets
-    renderer.setBloom(P.bloom, this.night ? 1.4 : 6.0, 0.45);
+    renderer.setBloom(P.bloom, this.night ? 1.4 : 9.0, 0.45);
 
     // Carte d'environnement (réflexions) + couleur du brouillard prise à l'horizon
     this.groundColor = new THREE.Color(opts.groundColor ?? P.ground);

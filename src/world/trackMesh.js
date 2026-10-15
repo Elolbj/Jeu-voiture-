@@ -382,7 +382,7 @@ function buildBarriers(track, group, type, segs) {
   });
   im.castShadow = true;
   group.add(im);
-  // Piles de pneus devant les bacs à graviers
+  // Piles de pneus devant les bacs à graviers (une pile tous les 2 échantillons)
   const tires = [];
   for (const side of [-1, 1]) {
     const runArr = side > 0 ? track.runR : track.runL;
@@ -392,16 +392,12 @@ function buildBarriers(track, group, type, segs) {
       if (runArr[ii] !== 1) continue;
       const w = wallArr[ii];
       const baseY = surfaceY(track, ii, side * w);
-      for (let lvl = 0; lvl < 3; lvl++) {
-        const p = worldPoint(track, ii, side * (w - 0.45), baseY + 0.12 + lvl * 0.24, [0, 0, 0]);
-        tires.push(p);
-      }
+      tires.push(worldPoint(track, ii, side * (w - 0.45), baseY + 0.45, [0, 0, 0]));
     }
   }
   if (tires.length) {
-    const tg = new THREE.TorusGeometry(0.3, 0.13, 6, 12);
-    tg.rotateX(Math.PI / 2);
-    const tm = new THREE.MeshStandardMaterial({ color: 0x1b1b1d, roughness: 0.9 });
+    const tg = new THREE.CylinderGeometry(0.36, 0.36, 0.9, 9, 1, true);
+    const tm = new THREE.MeshStandardMaterial({ color: 0x1b1b1d, roughness: 0.9, side: THREE.DoubleSide });
     const ti = new THREE.InstancedMesh(tg, tm, tires.length);
     tires.forEach((p, k) => {
       m4.makeTranslation(p[0], p[1], p[2]);

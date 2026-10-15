@@ -64,6 +64,8 @@ export class RaceSim {
       this.cars.push(car);
     });
     this.placeOnGrid(opts.gridOrder);
+    // Voitures immobilisées jusqu'au départ
+    for (const c of this.cars) c.vehicle.frozen = true;
     void L;
   }
 
@@ -112,7 +114,7 @@ export class RaceSim {
 
   // Avance la simulation de `frameDt` secondes (pas fixes internes).
   update(frameDt) {
-    this.acc += Math.min(frameDt, 0.1);
+    this.acc += Math.min(frameDt, this.maxFrame || 0.1);
     let steps = 0;
     while (this.acc >= PHYS_DT) {
       this.acc -= PHYS_DT;
@@ -207,7 +209,8 @@ export class RaceSim {
     c.s = p.s;
     c.lateral = p.lateral;
     c.offTrack = Math.abs(p.lateral) > t.halfWidth + 0.6;
-    if (c.offTrack && Math.abs(p.lateral) > t.halfWidth + 1.4) c.currentLapValid = false;
+    // Limites de piste : seul le joueur voit ses tours invalidés
+    if (c.isPlayer && c.offTrack && Math.abs(p.lateral) > t.halfWidth + 1.4) c.currentLapValid = false;
     if (this.phase !== 'racing' && this.phase !== 'finishing') return;
     if (c.finished) { c.distance += ds; return; }
     c.distance += ds;

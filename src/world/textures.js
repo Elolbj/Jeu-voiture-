@@ -311,24 +311,60 @@ export function facade(seed, night) {
 
 export function crowd() {
   return cached('crowd', () => {
-    const W = 512, H = 128;
+    // 8 rangées : chaque rangée = une contremarche + une marche (≈1,3 m de profil)
+    const W = 512, H = 512;
     const c = canvas(W, H);
     const ctx = c.getContext('2d');
-    ctx.fillStyle = '#3a3d44';
-    ctx.fillRect(0, 0, W, H);
     const r = rng(12);
-    const cols = ['#d33', '#eee', '#36c', '#fc3', '#2a2', '#f80', '#222', '#c5c', '#9cf'];
+    const rowH = H / 8;
+    const shirts = ['#d33', '#eee', '#36c', '#fc3', '#2a2', '#f80', '#222', '#c5c', '#9cf', '#e44', '#147', '#fff'];
     for (let row = 0; row < 8; row++) {
-      for (let i = 0; i < 90; i++) {
-        if (r() < 0.12) continue;
-        const x = (i / 90) * W + (r() - 0.5) * 3;
-        const y = row * 16 + 4;
-        ctx.fillStyle = cols[(r() * cols.length) | 0];
-        ctx.fillRect(x, y + 5, 4, 7);
-        ctx.fillStyle = r() < 0.5 ? '#e7c3a0' : '#8a5a3c';
-        ctx.fillRect(x + 0.5, y + 1, 3, 4);
+      const y0 = row * rowH;
+      // béton (contremarche) puis sièges
+      ctx.fillStyle = '#5b5e66';
+      ctx.fillRect(0, y0, W, rowH);
+      ctx.fillStyle = '#24418a';
+      for (let x = 0; x < W; x += 16) ctx.fillRect(x + 2, y0 + rowH * 0.42, 12, rowH * 0.3);
+      for (let x = 0; x < W; x += 16) {
+        if (r() < 0.18) continue;
+        const px = x + 3 + r() * 3;
+        // buste et tête (vus de face)
+        ctx.fillStyle = shirts[(r() * shirts.length) | 0];
+        ctx.fillRect(px, y0 + rowH * 0.36, 10, rowH * 0.34);
+        ctx.fillStyle = r() < 0.6 ? '#e3b996' : r() < 0.5 ? '#9a6a48' : '#5a3a28';
+        ctx.beginPath();
+        ctx.arc(px + 5, y0 + rowH * 0.27, 4.2, 0, Math.PI * 2);
+        ctx.fill();
+        if (r() < 0.15) {
+          // drapeau / bras levé
+          ctx.fillStyle = shirts[(r() * shirts.length) | 0];
+          ctx.fillRect(px + 7, y0 + rowH * 0.05, 7, 5);
+        }
       }
     }
+    return tex(c);
+  });
+}
+
+export function garageDoors() {
+  return cached('garageDoors', () => {
+    const W = 256, H = 128;
+    const c = canvas(W, H);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#e8e8e8';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#2a2d33';
+    ctx.fillRect(16, 18, W - 32, H - 18);
+    ctx.strokeStyle = '#3b3f47';
+    ctx.lineWidth = 2;
+    for (let y = 26; y < H; y += 10) {
+      ctx.beginPath();
+      ctx.moveTo(16, y);
+      ctx.lineTo(W - 16, y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#d4001a';
+    ctx.fillRect(16, 6, W - 32, 8);
     return tex(c);
   });
 }

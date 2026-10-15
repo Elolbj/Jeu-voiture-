@@ -152,7 +152,9 @@ export class Vehicle {
     this.axleRear = b;
 
     // Freins (capacité suffisante pour bloquer les roues)
-    const brakeTotal = m * G * 1.55 * r * (spec.brakeMul || 1);
+    // Freins carbone des voitures à fort appui : capacité accrue pour exploiter l'aéro
+    this.brakeG = (1.55 + (spec.aero.clF + spec.aero.clR) * 0.35) * (spec.brakeMul || 1);
+    const brakeTotal = m * G * this.brakeG * r;
     this.brakeBias = spec.brakeBias;
     this.brakeFront = (brakeTotal * this.brakeBias) / 2;
     this.brakeRear = (brakeTotal * (1 - this.brakeBias)) / 2;

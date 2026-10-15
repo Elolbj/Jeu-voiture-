@@ -113,7 +113,8 @@ export class RacingLine {
         const vj = v[j];
         const lat = vj * vj * Math.abs(this.kappa[j]);
         const gripTot = mu * (G + aeroK * vj * vj);
-        const longAvail = Math.sqrt(Math.max(0, gripTot * gripTot - lat * lat)) * 0.95 + dragK * vj * vj;
+        const brakeCap = G * (1.55 + (spec.aero.clF + spec.aero.clR) * 0.35) * (spec.brakeMul || 1) * 0.9;
+        const longAvail = Math.min(brakeCap, Math.sqrt(Math.max(0, gripTot * gripTot - lat * lat)) * 0.95) + dragK * vj * vj;
         const grade = t.grade[i] * G;
         const vi = Math.sqrt(vj * vj + 2 * Math.max(1, longAvail + grade) * ds);
         if (vi < v[i]) v[i] = vi;

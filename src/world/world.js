@@ -43,10 +43,10 @@ export class World {
     this.focus = new THREE.Vector3();
   }
 
-  update(dt, focus) {
+  update(dt, focus, camPos) {
     this.focus.copy(focus);
     this.env.update(focus);
-    this.scenery.update(dt);
+    this.scenery.update(dt, camPos || focus);
   }
 
   dispose() {

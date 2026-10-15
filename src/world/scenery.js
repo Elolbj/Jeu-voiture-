@@ -5,7 +5,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, clamp, lerp, smoothstep } from '../core/utils.js';
 import { Noise2D } from '../core/noise.js';
 import * as TX from './textures.js';
-import { InstancedForest } from './vegetation.js';
+import { InstancedForest, cullForest } from './vegetation.js';
 import { surfaceY } from './trackMesh.js';
 
 // Regroupe les géométries statiques par matériau pour limiter les appels de rendu
@@ -158,7 +158,7 @@ export class Scenery {
       if (Math.hypot(dx, dz) / 4 > (opts.maxSlope ?? 0.7)) continue;
       const kind = kinds[Math.floor(r() * kinds.length)];
       const sc = (opts.scale ?? 1) * (0.75 + r() * 0.5);
-      forest.add(kind, 3, x, y - 0.3, z, sc, r() * Math.PI * 2);
+      forest.add(kind, 2, x, y - 0.3, z, sc, r() * Math.PI * 2);
       placed++;
     }
     return placed;
@@ -167,7 +167,7 @@ export class Scenery {
   // ------------------------------------------------------------------ Campagne
   buildCountryside() {
     const q = this.quality.trees;
-    const f = new InstancedForest(this.group, 3);
+    const f = this.forest(InstancedForest, 3);
     this.scatter(f, Math.round(2600 * q), ['deciduous', 'deciduous', 'deciduous', 'pine'], { clump: 220, threshold: 0.0, nearTrack: 70 });
     this.scatter(f, Math.round(1200 * q), ['deciduous'], { clump: 900, threshold: -0.6 });
     this.scatter(f, Math.round(600 * q), ['bush'], { nearTrack: 30, minClear: 3, threshold: -0.4 });
@@ -187,7 +187,7 @@ export class Scenery {
           const x = cx + Math.cos(ang) * lx - Math.sin(ang) * lz;
           const z = cz + Math.sin(ang) * lx + Math.cos(ang) * lz;
           if (this.clearance(x, z) < 8) continue;
-          f.add('vine', 2, x, this.groundAt(x, z), z, 1, ang);
+          f.add('vine', 1, x, this.groundAt(x, z), z, 1, ang);
         }
       }
     }
@@ -221,6 +221,13 @@ export class Scenery {
     this.bin.add('farmRoof', roofMat, roof, mat(x, y + h - 0.5 + d * 0.2, z, rot));
   }
 
+  forest(Cls, seed) {
+    const f = new Cls(this.group, seed);
+    this.forests = this.forests || [];
+    this.forests.push(f);
+    return f;
+  }
+
   cachedMat(key, make) {
     this._mats = this._mats || new Map();
     if (!this._mats.has(key)) this._mats.set(key, make());
@@ -245,7 +252,7 @@ export class Scenery {
   // ------------------------------------------------------------------ Côte
   buildCoast() {
     const q = this.quality.trees;
-    const f = new InstancedForest(this.group, 5);
+    const f = this.forest(InstancedForest, 5);
     this.scatter(f, Math.round(900 * q), ['palm'], { nearTrack: 25, minClear: 5, threshold: -0.3, minY: 2.5 });
     this.scatter(f, Math.round(1300 * q), ['umbrella', 'umbrella', 'cypress'], { clump: 300, threshold: -0.1, minY: 3, nearTrack: 90 });
     this.scatter(f, Math.round(900 * q), ['bush', 'cypress'], { clump: 150, threshold: -0.2, minY: 3 });
@@ -329,7 +336,7 @@ export class Scenery {
   // ------------------------------------------------------------------ Montagne
   buildMountain() {
     const q = this.quality.trees;
-    const f = new InstancedForest(this.group, 7);
+    const f = this.forest(InstancedForest, 7);
     this.scatter(f, Math.round(5500 * q), ['pine', 'pine', 'pine', 'deciduous'], { clump: 260, threshold: -0.15, nearTrack: 120, maxY: 1420, maxSlope: 0.9 });
     this.scatter(f, Math.round(900), ['rock'], { scale: 2.2, threshold: -0.6, maxSlope: 3, nearTrack: 40, minClear: 2 });
     f.build();
@@ -413,7 +420,7 @@ export class Scenery {
       tryBuilding(x, z, 20 + r() * 25, 20 + r() * 25, 30 + r() * 130, r() * 3);
     }
     // Arbres de parc
-    const f = new InstancedForest(this.group, 9);
+    const f = this.forest(InstancedForest, 9);
     this.scatter(f, Math.round(300 * this.quality.trees), ['deciduous'], { nearTrack: 8, minClear: 3, threshold: 0.1 });
     f.build();
     // Port : eau + grues + conteneurs
@@ -521,7 +528,7 @@ export class Scenery {
   // ------------------------------------------------------------------ Grand Prix
   buildGP() {
     const q = this.quality.trees;
-    const f = new InstancedForest(this.group, 11);
+    const f = this.forest(InstancedForest, 11);
     this.scatter(f, Math.round(1500 * q), ['deciduous', 'deciduous', 'pine'], { clump: 300, threshold: 0.05, minClear: 25 });
     this.scatter(f, Math.round(900 * q), ['deciduous', 'pine'], { clump: 700, threshold: -0.4, minClear: 60 });
     f.build();
@@ -549,63 +556,94 @@ export class Scenery {
     if (big || this.theme === 'coast' || this.theme === 'countryside') this.pitBuilding(iStart, infield, big ? 260 : 120);
   }
 
+  // Extrusion continue d'un profil [[décalage depuis le mur, hauteur], ...] le long du circuit
+  extrude(i0, count, side, profile, material, opts = {}) {
+    const t = this.track;
+    const pos = [], uv = [];
+    const step = opts.step || 1;
+    const rows = [];
+    for (let k = 0; k <= count; k += step) {
+      const i = t.idx(i0 + k);
+      const wall = (side > 0 ? t.wallR[i] : t.wallL[i]) + (opts.offset || 0);
+      const hl = Math.hypot(t.rx[i], t.rz[i]) || 1;
+      const rx = (t.rx[i] / hl) * side, rz = (t.rz[i] / hl) * side;
+      const y0 = opts.baseY !== undefined ? opts.baseY : surfaceY(t, i, side * wall);
+      rows.push({ s: k * t.spacing, pts: profile.map(([d, hh]) => [t.px[i] + rx * (wall + d), y0 + hh, t.pz[i] + rz * (wall + d)]) });
+    }
+    const vLen = [0];
+    for (let j = 1; j < profile.length; j++) vLen.push(vLen[j - 1] + Math.hypot(profile[j][0] - profile[j - 1][0], profile[j][1] - profile[j - 1][1]));
+    for (let r = 0; r < rows.length - 1; r++) {
+      const A = rows[r], B = rows[r + 1];
+      for (let j = 0; j < profile.length - 1; j++) {
+        if (opts.skip && opts.skip(j)) continue;
+        const a0 = A.pts[j], a1 = A.pts[j + 1], b0 = B.pts[j], b1 = B.pts[j + 1];
+        const u0 = A.s / (opts.uS || 6), u1 = B.s / (opts.uS || 6);
+        const v0 = vLen[j] / (opts.vS || 4), v1 = vLen[j + 1] / (opts.vS || 4);
+        pos.push(...a0, ...b0, ...a1, ...a1, ...b0, ...b1);
+        uv.push(u0, v0, u1, v0, u0, v1, u0, v1, u1, v0, u1, v1);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, material);
+    m.castShadow = opts.cast !== false;
+    m.receiveShadow = true;
+    this.group.add(m);
+    return m;
+  }
+
   grandstand(i0, side, length, rows) {
     const t = this.track;
-    const crowdMat = this.cachedMat('crowd', () => new THREE.MeshStandardMaterial({ map: TX.crowd(), roughness: 0.9 }));
-    const steelM = this.cachedMat('gsSteel', () => new THREE.MeshStandardMaterial({ color: 0x5c6068, metalness: 0.6, roughness: 0.5 }));
-    const roofM = this.cachedMat('gsRoof', () => new THREE.MeshStandardMaterial({ color: 0xe8e9eb, metalness: 0.3, roughness: 0.5, side: THREE.DoubleSide }));
-    const steps = Math.round(length / t.spacing);
-    for (let k = -Math.floor(steps / 2); k < Math.floor(steps / 2); k += 4) {
-      const i = t.idx(i0 + k);
+    const crowdMat = this.cachedMat('crowd', () => new THREE.MeshStandardMaterial({ map: TX.crowd(), roughness: 0.9, side: THREE.DoubleSide }));
+    const concM = this.cachedMat('gsConc', () => new THREE.MeshStandardMaterial({ map: TX.concrete(170), color: 0xd0d2d6, roughness: 0.9, side: THREE.DoubleSide }));
+    const roofM = this.cachedMat('gsRoof', () => new THREE.MeshStandardMaterial({ color: 0xf2f3f5, metalness: 0.2, roughness: 0.55, side: THREE.DoubleSide }));
+    const steelM = this.cachedMat('gsSteel', () => new THREE.MeshStandardMaterial({ color: 0x4a4e56, metalness: 0.6, roughness: 0.5 }));
+    const count = Math.round(length / t.spacing);
+    const start = t.idx(i0 - Math.floor(count / 2));
+    // Gradins : contremarche 0,45 m + marche 0,85 m
+    const prof = [[3.2, -0.5], [3.2, 0.9]];
+    let d = 3.2, hh = 0.9;
+    for (let r = 0; r < rows; r++) {
+      prof.push([d + 0.85, hh]);
+      d += 0.85;
+      prof.push([d, hh + 0.45]);
+      hh += 0.45;
+    }
+    this.extrude(start, count, side, prof, crowdMat, { uS: 8.2, vS: 10.4, step: 2 });
+    // Mur arrière et façade
+    const back = d + 0.3;
+    this.extrude(start, count, side, [[back, -0.5], [back, hh + 3.2]], concM, { uS: 6, vS: 6, step: 2 });
+    this.extrude(start, count, side, [[2.9, -0.5], [2.9, 1.0], [3.2, 1.0]], concM, { uS: 6, vS: 6, step: 2 });
+    // Toit en porte-à-faux
+    this.extrude(start, count, side, [[back + 0.5, hh + 3.2], [2.2, hh + 4.0]], roofM, { uS: 10, vS: 10, step: 2 });
+    // Poteaux
+    for (let k = 0; k <= count; k += 12) {
+      const i = t.idx(start + k);
       const wall = side > 0 ? t.wallR[i] : t.wallL[i];
       const hl = Math.hypot(t.rx[i], t.rz[i]) || 1;
-      const rx = t.rx[i] / hl, rz = t.rz[i] / hl;
-      const rot = -t.heading[i];
+      const off = wall + back;
       const y0 = surfaceY(t, i, side * wall);
-      const seg = t.spacing * 4 + 0.05;
-      for (let row = 0; row < rows; row++) {
-        const off = wall + 4 + row * 0.9;
-        const x = t.px[i] + rx * off * side, z = t.pz[i] + rz * off * side;
-        const g = new THREE.BoxGeometry(seg, 0.55, 0.9);
-        // UV : la texture de foule couvre la marche
-        const uv = g.attributes.uv;
-        for (let v = 0; v < uv.count; v++) uv.setXY(v, uv.getX(v) * (seg / 10) + k * 0.13, (uv.getY(v) + row) / 8);
-        this.bin.add('crowd', crowdMat, g, mat(x, y0 + 0.6 + row * 0.55, z, rot));
-      }
-      // structure + toit
-      const backOff = wall + 4 + rows * 0.9 + 0.4;
-      const bx = t.px[i] + rx * backOff * side, bz = t.pz[i] + rz * backOff * side;
-      this.bin.add('gsSteel', steelM, new THREE.BoxGeometry(seg, rows * 0.55 + 4, 0.4), mat(bx, y0 + (rows * 0.55 + 4) / 2, bz, rot));
-      const roofOff = wall + 4 + rows * 0.45;
-      this.bin.add('gsRoof', roofM, new THREE.BoxGeometry(seg, 0.2, rows * 0.9 + 3), mat(t.px[i] + rx * roofOff * side, y0 + rows * 0.55 + 4.2, t.pz[i] + rz * roofOff * side, rot));
+      this.bin.add('gsSteel', steelM, new THREE.BoxGeometry(0.35, hh + 3.8, 0.35), mat(t.px[i] + (t.rx[i] / hl) * off * side, y0 + (hh + 3.8) / 2 - 0.3, t.pz[i] + (t.rz[i] / hl) * off * side));
     }
   }
 
   pitBuilding(i0, side, length) {
     const t = this.track;
-    const wallM = this.cachedMat('pitWall', () => new THREE.MeshStandardMaterial({ map: TX.concrete(225), color: 0xf2f2f2, roughness: 0.8 }));
-    const glassM = this.cachedMat('pitGlass', () => new THREE.MeshStandardMaterial({ color: 0x1d2a36, roughness: 0.1, metalness: 0.6 }));
-    const doorM = this.cachedMat('pitDoor', () => new THREE.MeshStandardMaterial({ color: 0x23262b, roughness: 0.6, metalness: 0.4 }));
-    const steps = Math.round(length / t.spacing);
-    for (let k = -Math.floor(steps / 2); k < Math.floor(steps / 2); k += 6) {
-      const i = t.idx(i0 + k);
-      const wall = side > 0 ? t.wallR[i] : t.wallL[i];
-      const hl = Math.hypot(t.rx[i], t.rz[i]) || 1;
-      const rx = t.rx[i] / hl, rz = t.rz[i] / hl;
-      const rot = -t.heading[i];
-      const y0 = surfaceY(t, i, side * wall);
-      const seg = t.spacing * 6 + 0.05;
-      const off = wall + 16;
-      const x = t.px[i] + rx * off * side, z = t.pz[i] + rz * off * side;
-      this.bin.add('pitWall', wallM, boxWorldUV(seg, 9, 14, 6, 6), mat(x, y0 + 4.5, z, rot));
-      const fo = wall + 9 - 0.05;
-      const fx = t.px[i] + rx * fo * side, fz = t.pz[i] + rz * fo * side;
-      this.bin.add('pitDoor', doorM, new THREE.BoxGeometry(seg * 0.8, 3.6, 0.2), mat(fx, y0 + 1.8, fz, rot));
-      this.bin.add('pitGlass', glassM, new THREE.BoxGeometry(seg * 0.92, 2.2, 0.2), mat(fx, y0 + 6.2, fz, rot));
-      // sol de la voie des stands
-      const lo = wall + 4.5;
-      this.bin.add('pitLane', this.cachedMat('pitLane', () => new THREE.MeshStandardMaterial({ map: TX.asphalt().map, color: 0x9a9a9a, roughness: 0.9 })), boxWorldUV(seg, 0.2, 9, 6, 6), mat(t.px[i] + rx * lo * side, y0 - 0.05, t.pz[i] + rz * lo * side, rot));
-    }
+    const wallM = this.cachedMat('pitWall', () => new THREE.MeshStandardMaterial({ map: TX.concrete(228), color: 0xf4f4f4, roughness: 0.8, side: THREE.DoubleSide }));
+    const glassM = this.cachedMat('pitGlass', () => new THREE.MeshStandardMaterial({ color: 0x1b2833, roughness: 0.08, metalness: 0.7, side: THREE.DoubleSide }));
+    const doorM = this.cachedMat('pitDoor', () => new THREE.MeshStandardMaterial({ map: TX.garageDoors(), roughness: 0.6, metalness: 0.3, side: THREE.DoubleSide }));
+    const laneM = this.cachedMat('pitLane', () => new THREE.MeshStandardMaterial({ map: TX.asphalt().map, color: 0x8f8f92, roughness: 0.9 }));
+    const count = Math.round(length / t.spacing);
+    const start = t.idx(i0 - Math.floor(count / 2));
+    // voie des stands (sol)
+    this.extrude(start, count, side, [[0.6, 0.02], [9.5, 0.02]], laneM, { uS: 7, vS: 7, cast: false });
+    // façade : portes de garage (rez-de-chaussée) + baie vitrée (étage) + toit
+    this.extrude(start, count, side, [[9.5, 0], [9.5, 4.2]], doorM, { uS: 6, vS: 4.2 });
+    this.extrude(start, count, side, [[9.5, 4.2], [9.5, 4.8], [9.0, 4.8]], wallM, { uS: 6, vS: 6 });
+    this.extrude(start, count, side, [[9.0, 4.8], [9.0, 7.6]], glassM, { uS: 6, vS: 6 });
+    this.extrude(start, count, side, [[8.4, 7.6], [9.0, 7.6], [9.0, 8.4], [24, 8.4], [24, 0]], wallM, { uS: 6, vS: 6 });
   }
 
   // Panneaux publicitaires sur poteaux
@@ -639,7 +677,11 @@ export class Scenery {
     }
   }
 
-  update(dt) {
+  update(dt, cam) {
+    if (cam && this.forests) {
+      const far = this.theme === 'mountain' ? 1400 : 950;
+      for (const f of this.forests) cullForest(f, cam, far);
+    }
     if (this.water) {
       this.water.map.offset.x += dt * 0.004;
       this.water.map.offset.y += dt * 0.0025;

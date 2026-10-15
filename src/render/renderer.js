@@ -8,10 +8,10 @@ import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { setMaxAnisotropy } from '../world/textures.js';
 
 export const QUALITY = {
-  basse: { pixelRatio: 0.75, shadows: false, shadowMap: 1024, bloom: false, fxaa: true, msaa: 0, trees: 0.4, terrainRes: 10, maxDpr: 1 },
-  moyenne: { pixelRatio: 1, shadows: true, shadowMap: 1024, bloom: true, fxaa: true, msaa: 0, trees: 0.7, terrainRes: 7, maxDpr: 1.25 },
-  haute: { pixelRatio: 1, shadows: true, shadowMap: 2048, bloom: true, fxaa: false, msaa: 4, trees: 1, terrainRes: 5.5, maxDpr: 1.5 },
-  ultra: { pixelRatio: 1, shadows: true, shadowMap: 4096, bloom: true, fxaa: false, msaa: 4, trees: 1.3, terrainRes: 4, maxDpr: 2 },
+  basse: { pixelRatio: 0.75, shadows: false, shadowMap: 1024, bloom: false, fxaa: true, msaa: 0, trees: 0.4, terrainRes: 14, maxDpr: 1 },
+  moyenne: { pixelRatio: 1, shadows: true, shadowMap: 1024, bloom: true, fxaa: true, msaa: 0, trees: 0.7, terrainRes: 10, maxDpr: 1.25 },
+  haute: { pixelRatio: 1, shadows: true, shadowMap: 2048, bloom: true, fxaa: false, msaa: 4, trees: 1, terrainRes: 8, maxDpr: 1.5 },
+  ultra: { pixelRatio: 1, shadows: true, shadowMap: 4096, bloom: true, fxaa: false, msaa: 4, trees: 1.3, terrainRes: 6, maxDpr: 2 },
 };
 
 export class Renderer {

@@ -140,15 +140,21 @@ export class HUD {
     const n = sim.cars.length;
     if (n > 1) this.posEl.innerHTML = `<span class="p">${car.position}</span><span class="n">/${n}</span>`;
     else this.posEl.innerHTML = extra.title ? `<span class="t">${extra.title}</span>` : '';
-    if (sim.track.closed) {
+    if (extra.licence) {
+      const tg = extra.licence.targets;
+      this.lapEl.innerHTML = tg ? `<span class="m">🥇 ${formatTime(tg.gold)}</span> <span class="m">🥈 ${formatTime(tg.silver)}</span> <span class="m">🥉 ${formatTime(tg.bronze)}</span>` : '';
+    } else if (sim.track.closed) {
       const lapShown = clamp(car.lap + 1, 1, sim.laps);
       this.lapEl.innerHTML = sim.mode === 'free' ? `TOUR <b>${car.lap + 1}</b>` : `TOUR <b>${lapShown}</b>/${sim.laps}`;
     } else {
       const pr = Math.round(sim.lapProgress(car) * 100);
       this.lapEl.innerHTML = `PROGRESSION <b>${pr}%</b>`;
     }
-    const cur = sim.phase === 'racing' || sim.phase === 'finishing' ? (car.finished ? car.finishTime - (car.lapTimes.length > 1 ? car.lapTimes.slice(0, -1).reduce((a, b) => a + b.time, 0) : 0) : sim.time - car.lapStart) : 0;
-    this.timeEl.textContent = formatTime(car.finished ? car.lastLap : cur);
+    let cur = 0;
+    if (extra.licence) cur = sim.time;
+    else if (car.finished) cur = car.lastLap;
+    else if (sim.phase === 'racing' || sim.phase === 'finishing') cur = sim.time - car.lapStart;
+    this.timeEl.textContent = formatTime(cur);
     this.timeEl.classList.toggle('invalid', !car.currentLapValid && !car.finished);
     this.lastEl.innerHTML = `<span>DERNIER</span> ${formatTime(car.lastLap)}`;
     this.bestEl.innerHTML = `<span>MEILLEUR</span> ${formatTime(car.bestLap)}`;

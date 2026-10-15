@@ -61,6 +61,13 @@ export class RaceScene {
       c.color = entries[i].color;
     });
     this.sim = sim;
+    sim.maxFrame = app.maxDt;
+    if (cfg.autopilot) {
+      const pc = sim.player;
+      pc.ai = new AIDriver(pc.vehicle, this.track, world.line, { skill: 0.9 });
+      pc.ai.car = pc;
+      this.autopilot = true;
+    }
     this.player = sim.player;
     this.playerIndex = sim.cars.indexOf(this.player);
 
@@ -72,6 +79,8 @@ export class RaceScene {
       this.player.distance = 0;
       this.player.prevS = ((s0 % this.track.length) + this.track.length) % this.track.length;
       this.licenceStartS = s0;
+      this.licenceHold = true; // simulation figée jusqu'au top départ
+      this.player.vehicle.frozen = false;
       this.buildLicenceMarks();
     }
 
@@ -240,7 +249,7 @@ export class RaceScene {
     }
 
     // ---- Contrôles du joueur ----
-    if (!pc.finished || this.phase === 'countdown') this.playerControls(dt);
+    if ((!pc.finished || this.phase === 'countdown') && !this.autopilot) this.playerControls(dt);
 
     // ---- Simulation ----
     const runSim = !(this.licence && this.licenceHold);
@@ -446,7 +455,7 @@ export class RaceScene {
     const pc = this.player;
     const v = pc.vehicle;
     const t = this.track;
-    this.licenceT += dt;
+    this.licenceT = this.sim.time; // temps simulé (indépendant de la fréquence d'affichage)
     const s = t.closed ? this.licenceStartS + pc.distance : pc.s;
     const fail = (reason) => this.endLicence(false, reason);
     if (Math.abs(pc.lateral) > t.halfWidth + 1.2 && L.kind !== 'lap') return fail('Sortie de piste');
@@ -455,7 +464,7 @@ export class RaceScene {
     if (L.kind === 'stop') {
       const [a, b] = L.zone;
       if (s > b + 3) return fail('Zone d\'arrêt dépassée');
-      if (Math.abs(v.speed) < 0.25 && this.licenceT > 1) {
+      if (Math.abs(v.speed) < 0.25 && s > this.licenceStartS + 8) {
         this.stopT = (this.stopT || 0) + dt;
         if (this.stopT > 0.4) {
           if (s >= a && s <= b) return this.endLicence(true, null, this.licenceT - this.stopT);
@@ -537,6 +546,7 @@ export class RaceScene {
     };
     this.phase = 'results';
     this.hud.setVisible(false);
+    this.app.touch?.show(false);
     for (const s of this.engineSounds) if (s.ok) s.out.gain.setTargetAtTime(0.15, audioCtx().currentTime, 0.4);
     this.app.onRaceFinished?.(this.result, this);
   }
@@ -570,7 +580,7 @@ export class RaceScene {
     if (this.replayCam === 'tv') cam = this.rig.updateTV(dt * rp.speed, g, g.s);
     else cam = this.rig.update(dt, g, model, { mode: this.replayCam === 'chase' ? 'chase' : 'cockpit' });
     // effets visuels des glissades rejoués (fumée légère)
-    this.world.update(dt, g.position);
+    this.world.update(dt, g.position, cam.position);
     // son du moteur suivi
     this.engineSounds.forEach((s, i) => {
       const gg = ghosts[i];
@@ -615,8 +625,15 @@ export class RaceScene {
     }
     // Carrosserie masquée en vue cockpit ? (on la garde pour voir le capot)
     const pm = this.models[this.playerIndex];
-    pm.interior.visible = this.rig.mode === 'cockpit' || this.phase === 'intro';
-    this.world.update(dt, pv.position);
+    // Niveaux de détail selon la distance à la caméra
+    this.models.forEach((m, i) => {
+      const d = m.root.position.distanceTo(cam.position);
+      m.interiorWanted = d < 30;
+      m.setLod(d > 70 ? 1 : 0);
+      m.interior.visible = d < 30;
+    });
+    void pm;
+    this.world.update(dt, pv.position, cam.position);
     this.effects.update(dt, r.gl.domElement.height, cam.fov);
 
     // Audio
@@ -643,8 +660,8 @@ export class RaceScene {
     this.setListener(cam);
 
     // HUD
-    if (this.phase !== 'results') this.hud.update(dt, sim, pc, { delta: this.delta, title: this.licence ? this.licence.title : null });
-    r.render(this.scene, cam);
+    if (this.phase !== 'results') this.hud.update(dt, sim, pc, { delta: this.delta, title: this.licence ? this.licence.title : null, licence: this.licence });
+    if (!this.app.noRender) r.render(this.scene, cam);
   }
 
   setListener(cam) {

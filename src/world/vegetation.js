@@ -50,11 +50,11 @@ export function treeGeometry(kind, seed = 1) {
     trunk.translate(0, (h + 1) / 2 - 1, 0);
     parts.push(colorize(trunk, TRUNK, 0.1, r));
     const green = [[0.2, 0.33, 0.1], [0.25, 0.37, 0.12], [0.18, 0.3, 0.12], [0.3, 0.38, 0.13]][Math.floor(r() * 4)];
-    const blobs = 4 + Math.floor(r() * 3);
+    const blobs = 5 + Math.floor(r() * 3);
     for (let i = 0; i < blobs; i++) {
-      const rad = 1.8 + r() * 1.4;
-      const s = new THREE.IcosahedronGeometry(rad, 1);
-      displace(s, 0.7, r);
+      const rad = 1.7 + r() * 1.3;
+      const s = new THREE.IcosahedronGeometry(rad, 0);
+      displace(s, 0.6, r);
       const a = r() * Math.PI * 2, d = i === 0 ? 0 : 1.2 + r() * 1.0;
       s.translate(Math.cos(a) * d, h + 1.6 + r() * 2.2, Math.sin(a) * d);
       parts.push(colorize(s, green, 0.18, r));
@@ -70,7 +70,7 @@ export function treeGeometry(kind, seed = 1) {
       const u = i / tiers;
       const rad = lerp(2.8, 0.9, u) * (0.9 + r() * 0.2);
       const ch = lerp(5, 3.2, u);
-      const c = new THREE.ConeGeometry(rad, ch, 7, 1);
+      const c = new THREE.ConeGeometry(rad, ch, 6, 1);
       displace(c, 0.35, r);
       c.translate(0, h * 0.3 + u * h * 0.62 + ch / 2, 0);
       parts.push(colorize(c, green, 0.15, r));
@@ -79,7 +79,7 @@ export function treeGeometry(kind, seed = 1) {
     const h = 8 + r() * 5;
     const trunk = new THREE.CylinderGeometry(0.1, 0.18, 2, 5);
     parts.push(colorize(trunk, TRUNK, 0.1, r));
-    const s = new THREE.SphereGeometry(1, 8, 8);
+    const s = new THREE.SphereGeometry(1, 6, 6);
     s.scale(1.1, h / 2, 1.1);
     displace(s, 0.25, r);
     s.translate(0, h / 2 + 0.6, 0);
@@ -91,7 +91,7 @@ export function treeGeometry(kind, seed = 1) {
     trunk.rotateZ(-0.06);
     parts.push(colorize(trunk, [0.36, 0.26, 0.18], 0.1, r));
     for (let i = 0; i < 5; i++) {
-      const s = new THREE.IcosahedronGeometry(2.4 + r(), 1);
+      const s = new THREE.IcosahedronGeometry(2.4 + r(), 0);
       s.scale(1.3, 0.42, 1.3);
       displace(s, 0.5, r);
       const a = r() * Math.PI * 2, d = i === 0 ? 0 : 2 + r() * 1.5;
@@ -131,13 +131,13 @@ export function treeGeometry(kind, seed = 1) {
       parts.push(colorize(s, [0.22, 0.32, 0.12], 0.2, r));
     }
   } else if (kind === 'vine') {
-    const s = new THREE.BoxGeometry(0.7, 1.2, 1.8, 1, 2, 2);
+    const s = new THREE.BoxGeometry(0.7, 1.2, 1.8, 1, 1, 1);
     displace(s, 0.25, r);
     s.translate(0, 0.6, 0);
     parts.push(colorize(s, [0.27, 0.36, 0.13], 0.2, r));
   } else if (kind === 'rock') {
-    const s = new THREE.IcosahedronGeometry(1, 1);
-    displace(s, 0.6, r);
+    const s = new THREE.IcosahedronGeometry(1, 0);
+    displace(s, 0.5, r);
     s.scale(1.4, 0.8, 1.1);
     s.translate(0, 0.2, 0);
     const g = 0.26 + r() * 0.1;
@@ -166,7 +166,7 @@ export class InstancedForest {
     this.lists.get(key).items.push([x, y, z, scale, rot]);
   }
 
-  build(tile = 350, castShadow = true) {
+  build(tile = 650, castShadow = true) {
     const m4 = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const up = new THREE.Vector3(0, 1, 0);
@@ -192,9 +192,22 @@ export class InstancedForest {
         im.castShadow = castShadow && kind !== 'vine';
         im.receiveShadow = true;
         im.computeBoundingSphere();
+        im.userData.center = im.boundingSphere.center.clone();
+        im.userData.radius = im.boundingSphere.radius;
+        this.tiles = this.tiles || [];
+        this.tiles.push(im);
         this.group.add(im);
       }
     }
+  }
+}
+
+// Masque les tuiles lointaines (au-delà du brouillard utile)
+export function cullForest(forest, cam, maxDist) {
+  if (!forest?.tiles) return;
+  for (const im of forest.tiles) {
+    const d = im.userData.center.distanceTo(cam) - im.userData.radius;
+    im.visible = d < maxDist;
   }
 }
 

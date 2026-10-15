@@ -188,14 +188,14 @@ export const CARS = [
   }),
   C('delaunay_dl98', {
     brand: 'Delaunay', model: 'DL-98 Le Mans', year: 1998, country: 'France', category: 'proto', price: 0,
-    desc: "Le prototype construit à la main par Marc Delaunay en 1998, privé de victoire au Mans. Restauré pour toi.",
+    desc: "Le prototype construit à la main par Marc Delaunay en 1998, privé de victoire au Mans. Restauré et modernisé : V12 de 790 ch, 960 kg.",
     style: 'gt1', dims: { length: 4.85, width: 1.98, height: 1.12, wheelbase: 2.85, track: 1.64 },
     wheel: { radius: 0.34, width: 0.31, rim: 'race', rimColor: '#c9a74a' },
-    mass: 1000, cgHeight: 0.36, weightFront: 0.44, drive: 'MR',
-    engine: { layout: 'V12', cyl: 12, displacement: 6.0, hp: 700, hpRpm: 8000, torque: 680, torqueRpm: 6000, idle: 1100, redline: 8600, limiter: 8800, inertia: 0.13 },
+    mass: 960, cgHeight: 0.35, weightFront: 0.44, drive: 'MR',
+    engine: { layout: 'V12', cyl: 12, displacement: 6.0, hp: 790, hpRpm: 8200, torque: 720, torqueRpm: 6200, idle: 1100, redline: 8800, limiter: 9000, inertia: 0.12 },
     gearbox: { ratios: [2.85, 2.1, 1.68, 1.4, 1.2, 1.04], final: 3.25, reverse: 3.0, shiftTime: 0.05 },
     tires: 'course', susp: { freqF: 3.2, freqR: 3.4, zeta: 0.55, arbF: 0.5, arbR: 0.4 },
-    aero: { cd: 0.43, area: 1.9, clF: 1.5, clR: 2.2 }, steerLock: 27, lsd: 100, brakeBias: 0.57,
+    aero: { cd: 0.41, area: 1.9, clF: 1.65, clR: 2.35 }, steerLock: 27, lsd: 100, brakeBias: 0.57,
     paints: ['#0b2e6b', '#f2f2f2', '#c8102e'], livery: true, storyOnly: true,
   }),
 ];

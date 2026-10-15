@@ -46,11 +46,12 @@ export class Input {
     return KEYMAP[action].some((k) => this.down.has(k));
   }
 
-  // Front montant (une seule fois par appui) — clavier ou manette
+  // Front montant (une seule fois par appui) — clavier, manette ou écran tactile
   pressed(action) {
     const k = KEYMAP[action]?.some((c) => this.edges.has(c));
     const g = this.padEdges?.has(action);
-    return !!(k || g);
+    const t = this.touch?.edges.has(action);
+    return !!(k || g || t);
   }
 
   pollGamepad() {
@@ -81,11 +82,12 @@ export class Input {
     const gp = this.pollGamepad();
     const s = this.state;
     // Clavier : rampes douces
-    const kt = this.key('throttle') ? 1 : 0;
-    const kb = this.key('brake') ? 1 : 0;
+    const T = this.touch?.active ? this.touch.state : null;
+    const kt = this.key('throttle') || T?.throttle ? 1 : 0;
+    const kb = this.key('brake') || T?.brake ? 1 : 0;
     this.kbThrottle += clamp(kt - this.kbThrottle, -dt * 8, dt * 6);
     this.kbBrake += clamp(kb - this.kbBrake, -dt * 10, dt * 7);
-    const ks = (this.key('right') ? 1 : 0) - (this.key('left') ? 1 : 0);
+    const ks = (this.key('right') || T?.right ? 1 : 0) - (this.key('left') || T?.left ? 1 : 0);
     s.keyboardSteer = ks;
     if (gp && this.usingPad) {
       const ax = gp.axes[0] || 0;
@@ -113,6 +115,7 @@ export class Input {
   // Vide les fronts : à appeler en fin d'image
   endFrame() {
     this.edges.clear();
+    this.touch?.edges.clear();
     if (this.padEdges) this.padEdges.clear();
   }
 }
