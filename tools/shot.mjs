@@ -2,7 +2,8 @@
 import { spawn } from 'node:child_process';
 const [hash = '', out = 'tools/scratch/shot.png', w = '1280', h = '720', wait = '2500'] = process.argv.slice(2);
 const pw = await import('/opt/node22/lib/node_modules/playwright/index.mjs');
-const port = 5199;
+// Port propre à chaque copie de travail (plusieurs serveurs Vite peuvent tourner en parallèle)
+const port = +process.env.PLAY_PORT || 5200 + [...process.cwd()].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 700, 7);
 let server = null;
 async function up() {
   try { const r = await fetch(`http://localhost:${port}/`); return r.ok; } catch { return false; }
