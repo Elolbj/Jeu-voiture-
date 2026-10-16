@@ -136,7 +136,7 @@ function skidpad(spec, speed) {
 }
 
 const fmt = (x, d = 2) => (x == null ? '--' : x.toFixed(d));
-const cmp = (mine, real, d = 1) => (showRef && real != null ? ` (réel ${real.toFixed(d)})` : '');
+const cmp = (real, d = 1) => (showRef && real != null ? ` (réel ${real.toFixed(d)})` : '');
 
 function selected() {
   if (!ids.length) return CARS;
@@ -157,8 +157,8 @@ function checkData() {
     else if (BRANDS[c.brand].country !== c.country) err(c, `pays ${c.country} ≠ pays de la marque ${BRANDS[c.brand].country}`);
     if (!CATEGORIES[c.category]) err(c, `catégorie inconnue : ${c.category}`);
     if (!TIRES[c.tires]) err(c, `pneus inconnus : ${c.tires}`);
-    if (!STYLE_IDS.includes(c.style)) err(c, `style de carrosserie inconnu : ${c.style}`);
-    if (!RIMS.includes(w.rim)) err(c, `style de jante inconnu : ${w.rim}`);
+    if (!STYLE_IDS.includes(c.style)) warn(c, `style de carrosserie non répertorié ici : ${c.style}`);
+    if (!RIMS.includes(w.rim)) warn(c, `style de jante non répertorié ici : ${w.rim}`);
     if (LAYOUTS[e.layout] !== e.cyl) err(c, `disposition ${e.layout} incohérente avec ${e.cyl} cylindres`);
     if (!(e.idle < e.torqueRpm && e.torqueRpm <= e.hpRpm && e.hpRpm <= e.redline && e.redline < e.limiter)) err(c, 'régimes non croissants (ralenti < couple max ≤ puissance max ≤ zone rouge < rupteur)');
     const tAtPower = (e.hp * 735.5) / ((e.hpRpm * Math.PI) / 30);
@@ -233,11 +233,11 @@ for (const car of list) {
       (showRef && r.ref ? `   ~ ${r.ref}` : '')
   );
   console.log(
-    `   0-100 ${fmt(a.t100)}s${cmp(a.t100, r.t100)}  0-200 ${fmt(a.t200, 1)}s${cmp(a.t200, r.t200)}  ` +
-      `400m DA ${fmt(a.q400?.t)}s à ${fmt(a.q400?.v, 0)}${cmp(a.q400?.t, r.q400)}  1000m DA ${fmt(a.k1000?.t)}s à ${fmt(a.k1000?.v, 0)}${cmp(a.k1000?.t, r.k1000)}`
+    `   0-100 ${fmt(a.t100)}s${cmp(r.t100)}  0-200 ${fmt(a.t200, 1)}s${cmp(r.t200)}  ` +
+      `400m DA ${fmt(a.q400?.t)}s à ${fmt(a.q400?.v, 0)}${cmp(r.q400)}  1000m DA ${fmt(a.k1000?.t)}s à ${fmt(a.k1000?.v, 0)}${cmp(r.k1000)}`
   );
   console.log(
-    `   Vmax ${a.vmax.toFixed(0)} km/h${cmp(a.vmax, r.vmax, 0)} (rapport ${a.gear}, ${a.rpm} tr/min, 98 % en ${fmt(a.t98, 0)}s)  ` +
+    `   Vmax ${a.vmax.toFixed(0)} km/h${cmp(r.vmax, 0)} (rapport ${a.gear}, ${a.rpm} tr/min, 98 % en ${fmt(a.t98, 0)}s)  ` +
       `100-0 ${b.dist.toFixed(1)} m  lat ${s1.latG.toFixed(2)} g à 90${s1.lost ? ' (perdu)' : ''} / ${s2.latG.toFixed(2)} g à 160${s2.lost ? ' (perdu)' : ''}  ` +
       `assiette ${a.y[0].toFixed(3)}-${a.y[1].toFixed(3)} m`
   );
