@@ -80,7 +80,7 @@ export function paintLivery(layout, opts, res = 1024) {
   };
   const L = layout;
   const zF = L.zF, zR = L.zR;
-  const doorMid = (L.doors[0].z0 + L.doors[L.doors.length - 1].z1) / 2;
+  const doorMid = (L.panel.z0 + L.panel.z1) / 2;
   const sideMidY = (L.sill + L.belt) / 2;
 
   // ------------------------------------------------------------ motifs
@@ -161,8 +161,8 @@ export function paintLivery(layout, opts, res = 1024) {
     for (const right of [true, false]) {
       // aile avant (derrière la roue), bas de caisse, aile arrière
       const zFe = L.zAxleF + L.archR + 0.2;
-      if (zFe + 0.18 < L.doors[0].z0 + 0.15) sponsorAt(1, zFe, at(zFe).ys - 0.1, 0.34, 0.09, right);
-      sponsorAt(2, doorMid, L.sill + 0.06, Math.min(1.2, (L.doors[L.doors.length - 1].z1 - L.doors[0].z0) * 0.8), 0.07, right);
+      if (zFe + 0.18 < L.panel.z0 + 0.15) sponsorAt(1, zFe, at(zFe).ys - 0.1, 0.34, 0.09, right);
+      sponsorAt(2, doorMid, L.sill + 0.06, Math.min(1.2, (L.panel.z1 - L.panel.z0) * 0.8), 0.07, right);
       const zRe = L.zAxleR + L.archR * 0.2;
       sponsorAt(3, zRe, at(zRe).ys - 0.08, 0.32, 0.08, right);
     }

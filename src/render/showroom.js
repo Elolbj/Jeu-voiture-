@@ -34,9 +34,13 @@ function studioEnvironment(gl) {
   const p = dome.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const y = p.getY(i) / 30;
-    // sol sombre, horizon gris, voûte un peu plus claire : la « ligne d'horizon » des studios auto
-    const v = y < -0.02 ? 0.012 : y < 0.12 ? 0.05 + y * 0.6 : 0.12 + (y - 0.12) * 0.12;
-    col.push(v, v * 1.02, v * 1.08);
+    // sol sombre, bande d'horizon claire (cyclorama), voûte grise : reflets « studio » lisibles sur la caisse
+    let v;
+    if (y < -0.04) v = 0.02;
+    else if (y < 0.02) v = 0.02 + (y + 0.04) / 0.06 * 0.5;
+    else if (y < 0.3) v = 0.52 - (y - 0.02) / 0.28 * 0.38;
+    else v = 0.14 - (y - 0.3) * 0.08;
+    col.push(v, v * 1.01, v * 1.04);
   }
   dome.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   studio.add(new THREE.Mesh(dome, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));

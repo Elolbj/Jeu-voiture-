@@ -20,8 +20,8 @@
 //   sideIntake, splitter, canards, fin, roofScoop, softTop, carbonRoof, race (voiture de course).
 
 export const DEFAULTS = {
-  roof: 1.0, nL: 6, nU: 4.5, tuck: 0.035, shoulder: 0.78, fenderGap: 0.065, flare: 0.02,
-  frame: 'black', frameW: 0.03, bPillar: 'black', quarter: true, bumpers: null, exhaust: null,
+  roof: 1.0, nL: 6, nU: 4.5, tuck: 0.035, lean: 0.022, tumble: 0.05, rTop: 0.08, rRock: 0.05, crown: 0.02, shoulder: 0.78, fenderGap: 0.065, flare: 0.02,
+  frame: 'black', frameW: 0.03, railF: 0.045, railR: 0.07, pillarA: 0.055, pillarC: 0.11, bPillar: 'black', quarter: true, bumpers: null, exhaust: null,
   diffuser: null, skirt: null, lip: null, mirrors: 'door', antenna: null, roofRails: false, hoodScoop: false,
   fog: true, wipers: 2, badge: true, tailPanel: null, cowl: true, canards: false, louvers: false,
 };

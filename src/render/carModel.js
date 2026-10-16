@@ -47,10 +47,10 @@ export function carMaterials() {
     grilleMesh: shared('grilleMesh', () => decal(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45, metalness: 0.4, map: meshGrille() }))),
     badge: shared('badge', () => decal(new THREE.MeshStandardMaterial({ color: 0xffffff, map: badgeAtlas(), alphaTest: 0.35, metalness: 0.55, roughness: 0.28 }))),
     well: shared('well', () => new THREE.MeshStandardMaterial({ color: 0x060607, roughness: 1, metalness: 0, side: THREE.DoubleSide })),
-    interior: shared('interior', () => new THREE.MeshStandardMaterial({ color: 0x1f2024, vertexColors: true, roughness: 0.82, metalness: 0.05 })),
+    interior: shared('interior', () => new THREE.MeshStandardMaterial({ color: 0x1f2024, vertexColors: true, roughness: 0.82, metalness: 0.05, envMapIntensity: 0.35 })),
     interiorBack: shared('interiorBack', () => new THREE.MeshStandardMaterial({ color: 0x17181b, roughness: 0.92, side: THREE.BackSide })),
-    seat: shared('seat', () => new THREE.MeshStandardMaterial({ color: 0xffffff, map: seatTexture(), roughness: 0.92 })),
-    seatRace: shared('seatRace', () => new THREE.MeshStandardMaterial({ color: 0xffffff, map: seatTexture('#8c1218'), roughness: 0.9 })),
+    seat: shared('seat', () => new THREE.MeshStandardMaterial({ color: 0xffffff, map: seatTexture(), roughness: 0.92, envMapIntensity: 0.35 })),
+    seatRace: shared('seatRace', () => new THREE.MeshStandardMaterial({ color: 0xffffff, map: seatTexture('#8c1218'), roughness: 0.9, envMapIntensity: 0.35 })),
     gauge: shared('gauge', () => { const g = gaugeTexture(); return new THREE.MeshStandardMaterial({ color: 0xffffff, map: g, emissiveMap: g, emissive: 0xffffff, emissiveIntensity: 0.6, roughness: 0.35 }); }),
     cage: shared('cage', () => new THREE.MeshStandardMaterial({ color: 0x9a9da3, metalness: 0.8, roughness: 0.4 })),
     fabric: shared('fabric', () => new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.96, metalness: 0 })),
@@ -62,8 +62,8 @@ export function carMaterials() {
 function glassMaterial(tint) {
   const k = Math.round(Math.min(1, Math.max(0, tint)) * 20) / 20;
   return shared('glass' + k, () => new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(0x0e1418).lerp(new THREE.Color(0x020304), k), metalness: 0.0, roughness: 0.03,
-    transparent: true, opacity: 0.3 + 0.62 * k, clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.6, depthWrite: false,
+    color: new THREE.Color(0x0b1015).lerp(new THREE.Color(0x020304), k), metalness: 0.0, roughness: 0.03,
+    transparent: true, opacity: 0.56 + 0.4 * k, clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.5, depthWrite: false,
   }));
 }
 function plateMaterial(text) {
@@ -148,7 +148,7 @@ function liveryLayout(shape, atlas, cab, key) {
   const archTop = shape.r + shape.archR * 0.97;
   const secR = shape.cabSection((st.roofF + st.roofB) / 2);
   return {
-    key, atlas, prof, doors: st.doors > 0 ? doors : [],
+    key, atlas, prof, doors: st.doors > 0 ? doors : [], panel: { z0: doors[0].z0, z1: doors[doors.length - 1].z1 },
     zF: shape.zFront, zR: shape.zRear, zAxleF: shape.zAxleF, zAxleR: shape.zAxleR, archR: shape.archR,
     archTopF: archTop, archTopR: archTop, W: shape.Wmax, L: shape.L,
     sill: shape.clear + 0.02, belt: shape.belt, zWS, zRoofF: shape.zOf(st.roofF), zRoofB: shape.zOf(st.roofB), roofW: secR.wr * 2,

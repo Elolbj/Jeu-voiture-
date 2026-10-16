@@ -642,11 +642,13 @@ export function buildBodyParts(shape, spec, exhaust) {
   for (const za of [shape.zAxleF, shape.zAxleR]) {
     const path = [];
     const R = shape.archR;
-    for (let i = 0; i <= 18; i++) {
-      const a = lerp(-1.36, 1.36, i / 18);
-      const z = za + Math.sin(a) * R * 1.005;
-      const e = lowerEdge(shape, shape.tOf(z), 0.006);
-      path.push(new THREE.Vector3(e.x - 0.004, e.y, z));
+    const yMin = shape.clear + 0.03;
+    for (let i = 0; i <= 28; i++) {
+      const a = lerp(-1.75, 1.75, i / 28);
+      const z = za + Math.sin(a) * R * 1.004, y = shape.r + Math.cos(a) * R * 1.004;
+      if (y < yMin) continue;
+      const x = shape.xAt(shape.tOf(z), y);
+      if (x > 0.1) path.push(new THREE.Vector3(x - 0.006, y, z));
     }
     const rad = st.flare >= 0.06 ? 0.012 : 0.009;
     const prof = [];

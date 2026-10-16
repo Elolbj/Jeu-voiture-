@@ -20,6 +20,10 @@ function keyInterp(keys, t) {
   return keys[keys.length - 1][1];
 }
 
+// Répartition des points de section par arc (fractions de chaque moitié, voir sectionCurve)
+const SEC_LOW = [1 / 7, 2 / 7, 4 / 7];
+const SEC_UP = [2 / 7, 2 / 7, 3 / 7];
+
 // Arrondi en superellipse : 0 à l'extrémité, 1 à la distance R
 function roundEase(d, R, p) {
   if (d >= R) return 1;
@@ -75,6 +79,7 @@ export class BodyShape {
     this.belt = st.belt * H;
     this._p = {};
     this._secCache = new Map();
+    this._curveCache = new Map();
   }
 
   // Profil de la section en t : dessus au centre (top), dessus des ailes (topF), dessous (bot),
@@ -93,12 +98,8 @@ export class BodyShape {
       const k = Math.max(kF, kR);
       if (k > 0) topF = lerp(top, this.fenderNeed, k);
     }
+    // dessous plat : les passages de roues sont découpés ensuite dans le maillage (voir archSnap)
     let bot = this.clear;
-    for (const za of [this.zAxleF, this.zAxleR]) {
-      const dz = z - za;
-      const R = this.archR;
-      if (Math.abs(dz) < R) bot = Math.max(bot, this.r + Math.sqrt(R * R - dz * dz) * 0.97);
-    }
     const eT = roundEase(dF, st.noseR, st.nosePow) * roundEase(dR, st.tailR, st.tailPow);
     const eB = roundEase(dF, st.noseRB, 2.2) * roundEase(dR, st.tailRB, 2.2);
     const yC = dF < dR ? this.yNose : this.yTail;
@@ -125,6 +126,51 @@ export class BodyShape {
   top(t) { return this.profile(t).top; }
   bottom(t) { return this.profile(t).bot; }
 
+  // Bas de caisse visible en z : dessous, ou bord supérieur du passage de roue
+  archBot(z) {
+    let y = this.clear;
+    for (const za of [this.zAxleF, this.zAxleR]) {
+      const dz = z - za, R = this.archR;
+      if (Math.abs(dz) < R) y = Math.max(y, this.r + Math.sqrt(R * R - dz * dz));
+    }
+    return y;
+  }
+
+  // Découpe des passages de roues : un point (z, y) intérieur au cercle d'aile est ramené sur le cercle
+  // (radialement au-dessus du moyeu, horizontalement en dessous). Renvoie true si le point était intérieur.
+  archSnap(p) {
+    const R = this.archR, yc = this.r;
+    for (const za of [this.zAxleF, this.zAxleR]) {
+      const dz = p.z - za, dy = p.y - yc;
+      const d = Math.hypot(dz, dy);
+      if (d >= R) continue;
+      if (dy >= 0) {
+        const k = R / Math.max(d, 1e-6);
+        p.z = za + dz * k; p.y = yc + dy * k;
+      } else {
+        p.z = za + (dz >= 0 ? 1 : -1) * Math.sqrt(Math.max(0, R * R - dy * dy));
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // Demi-largeur extérieure de la section en t à la hauteur y (0 hors de la section)
+  xAt(t, y) {
+    const P = this.profile(t, {});
+    const q = {};
+    if (y < P.bot || y > P.topF) return 0;
+    // y croît avec θ sur chaque moitié de section
+    let lo = y <= P.ys ? -Math.PI / 2 : 0, hi = y <= P.ys ? 0 : Math.PI / 2;
+    for (let i = 0; i < 22; i++) {
+      const m = (lo + hi) / 2;
+      this.sectionPoint(t, m, q);
+      if (q.y < y) lo = m; else hi = m;
+    }
+    this.sectionPoint(t, (lo + hi) / 2, q);
+    return q.x;
+  }
+
   // Vue en plan : coins arrondis + ailes élargies aux roues
   halfWidth(t, z = this.zFront + t * this.L) {
     const st = this.st;
@@ -146,35 +192,72 @@ export class BodyShape {
       this.st.valley * 0.6 * smoothstep(this.st.rearB - 0.05, this.st.rearB + 0.05, t);
   }
 
-  // Point de la section (côté droit) pour un angle θ ∈ [-π/2, π/2]
-  sectionPoint(t, theta, out) {
-    const P = this.profile(t, out);
-    const { top, topF, bot, W, ys } = P;
+  // Section (côté droit) en arcs de Bézier aux indices fixes, pour que les lignes de style restent alignées
+  // le long de la voiture : dessous plat, arrondi de bas de caisse, flanc inférieur bombé jusqu'à la ligne
+  // de caractère (point le plus large, ys), flanc supérieur rentrant (tumblehome), arrondi d'épaule, dessus bombé.
+  sectionCurve(t) {
+    const key = Math.round(t * 1e6);
+    let c = this._curveCache.get(key);
+    if (c) return c;
+    const P = this.profile(t, {});
     const st = this.st;
-    let x, y;
-    const c = Math.abs(Math.abs(theta) - Math.PI / 2) < 1e-9 ? 0 : Math.cos(theta), s = Math.sin(theta);
-    if (theta < 0) {
-      const n = st.nL;
-      x = W * Math.pow(Math.abs(c), 2 / n);
-      const as = Math.pow(Math.abs(s), 2 / n);
-      y = ys - (ys - bot) * as;
-      // le point le plus large est la ligne de caractère : flanc incliné vers l'intérieur dessous,
-      // légèrement creusé, bas de caisse rentré
-      x -= W * (st.lean ?? 0.022) * as * P.e;
-      x -= W * 0.012 * Math.sin(Math.min(1, -theta / 0.9) * Math.PI);
-      x -= W * st.tuck * smoothstep(0.55, 1, as) * P.e;
+    const { top, topF, bot, W, ys, e } = P;
+    const hL = Math.max(1e-4, ys - bot), hU = Math.max(1e-4, topF - ys);
+    // bas de caisse rentré, flanc inférieur incliné
+    const xr = W * (1 - (st.lean + st.tuck) * e);
+    const rB = Math.min(st.rRock, hL * 0.4, xr * 0.4);
+    // flanc supérieur : rentré de « tumble » au niveau de l'épaule, arrondi rT
+    const xu = W * (1 - st.tumble * e);
+    const rT = Math.min(st.rTop, hU * 0.75, xu * 0.45);
+    const yu = topF - rT * 0.85;
+    // coin d'épaule : intersection du flanc supérieur prolongé et de l'horizontale du dessus
+    const k = (topF - yu) / Math.max(1e-4, yu - ys);
+    const xc = xu + (xu - W) * k;
+    const a5x = Math.max(xc * 0.05, xc - rT);
+    const crown = (st.crown ?? 0.02) * e;
+    const yCenter = top + crown - this.valley(t) * e;
+    c = {
+      e, z: P.z,
+      // segments : [type, points…] ; type 'q' = Bézier quadratique, 't' = dessus (fonction de x)
+      seg: [
+        ['q', [0, bot], [(xr - rB) * 0.5, bot], [xr - rB, bot]],
+        ['q', [xr - rB, bot], [xr, bot], [xr + (W - xr) * 0.18, bot + rB]],
+        ['q', [xr + (W - xr) * 0.18, bot + rB], [W, lerp(bot + rB, ys, 0.38)], [W, ys]],
+        ['q', [W, ys], [W - (W - xu) * 0.12, lerp(ys, yu, 0.5)], [xu, yu]],
+        ['q', [xu, yu], [xc, topF], [a5x, topF]],
+        ['t', a5x, topF, yCenter],
+      ],
+    };
+    if (this._curveCache.size > 6000) this._curveCache.clear();
+    this._curveCache.set(key, c);
+    return c;
+  }
+
+  // Point de la section (côté droit) pour θ ∈ [-π/2, π/2] : moitié basse (θ < 0) du dessous à la ligne de
+  // caractère, moitié haute jusqu'au centre du dessus. Les arcs occupent des fractions fixes de chaque moitié.
+  sectionPoint(t, theta, out) {
+    this.profile(t, out);
+    const c = this.sectionCurve(t);
+    const lower = theta < 0;
+    const f = lower ? (theta + Math.PI / 2) / (Math.PI / 2) : theta / (Math.PI / 2);
+    const W = lower ? SEC_LOW : SEC_UP;
+    let i = 0, acc = 0;
+    while (i < W.length - 1 && f > acc + W[i]) { acc += W[i]; i++; }
+    const u = clamp((f - acc) / W[i], 0, 1);
+    const sg = c.seg[(lower ? 0 : 3) + i];
+    if (sg[0] === 'q') {
+      const [, a, b, d] = sg;
+      const m = 1 - u;
+      out.x = m * m * a[0] + 2 * m * u * b[0] + u * u * d[0];
+      out.y = m * m * a[1] + 2 * m * u * b[1] + u * u * d[1];
     } else {
-      const n = st.nU;
-      x = W * Math.pow(Math.abs(c), 2 / n);
-      y = ys + (topF - ys) * Math.pow(Math.abs(s), 2 / n);
-      const v = (topF - top) + this.valley(t) * P.e;
-      if (v > 0) {
-        const u = x / (W * 0.72);
-        if (u < 1) { const q = 1 - u * u * u * u; y -= v * q * q; }
-      }
+      // dessus : de l'épaule (x0, y0) au centre (0, yc), tangentes horizontales aux deux bouts
+      const [, x0, y0, yc] = sg;
+      const xx = x0 * (1 - u);
+      const v = 1 - (xx / Math.max(1e-6, x0)) ** 2;
+      out.x = xx;
+      out.y = y0 + (yc - y0) * v * v * (3 - 2 * v);
     }
-    out.x = x;
-    out.y = y;
     return out;
   }
 
@@ -323,16 +406,17 @@ export function fixNormals(g) {
 // ---------------------------------------------------------------------------
 export function buildBodyGeometry(shape, atlas, lod = 0) {
   const ts = [];
-  const N = lod ? 26 : 76;
+  const N = lod ? 26 : 70;
   for (let i = 0; i <= N; i++) ts.push(0.5 - 0.5 * Math.cos((i / N) * Math.PI));
-  const nArch = lod ? 3 : 7;
+  // stations serrées autour des passages de roues (découpe nette)
+  const step = (lod ? 0.07 : 0.024) / shape.L;
   for (const ta of [shape.tAxleF, shape.tAxleR]) {
-    const dt = shape.archR / shape.L;
-    for (let k = -nArch; k <= nArch; k++) ts.push(ta + (k / nArch) * dt * 1.02);
+    const dt = (shape.archR * 1.12) / shape.L;
+    for (let t = ta - dt; t <= ta + dt + 1e-9; t += step) if (t > 0 && t < 1) ts.push(t);
   }
   ts.sort((a, b) => a - b);
   const stations = ts.filter((t, i) => i === 0 || t - ts[i - 1] > 1e-4);
-  const nLow = lod ? 4 : 10, nUp = lod ? 6 : 14, kS = nUp / 2; // couture à θ = π/4
+  const nLow = lod ? 7 : 14, nUp = lod ? 7 : 14, kS = lod ? 3 : 6; // couture au milieu de l'arrondi d'épaule
   const thetas = [];
   for (let k = 0; k <= nLow; k++) thetas.push(-Math.PI / 2 + (k / nLow) * (Math.PI / 2));
   for (let k = 1; k <= nUp; k++) thetas.push((k / nUp) * (Math.PI / 2));
@@ -343,22 +427,26 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
   for (let k = seam; k <= top; k++) ringT.push([k, 1]);
   for (let k = top - 1; k >= seam; k--) ringT.push([k, -1]);
   for (let k = seam; k >= 0; k--) ringL.push([k, -1]);
-  const pos = [], uv = [], col = [], idx = [];
+  const pos = [], pos0 = [], uv = [], col = [], idx = [];
   const p = {}, o = [0, 0];
   // découpe sous l'habitacle (détail complet seulement) : demi-largeur limite par station
   const st = shape.st;
   const cut = lod ? null : stations.map((t) => (t > st.ws + 0.025 && t < st.rearB - 0.02 ? shape.cabSection(t).wc - 0.014 : 0));
-  // positions par station (calculées une fois)
+  // positions par station (calculées une fois), passages de roues découpés
+  const q = { z: 0, y: 0 };
   const grid = stations.map((t) => thetas.map((th) => {
     shape.sectionPoint(t, th, p);
-    return [p.x, p.y, p.z, p.bot, th];
+    q.z = p.z; q.y = p.y;
+    const inside = th < 0.05 && shape.archSnap(q);
+    return [p.x, q.y, q.z, p.bot, th, inside, p.y, p.z];
   }));
   const patch = (ring, region) => {
     const base = pos.length / 3, M = ring.length;
     stations.forEach((t, si) => {
       for (const [k, side] of ring) {
-        const [x, y, z, bot, th] = grid[si][k];
+        const [x, y, z, bot, th, , y0, z0] = grid[si][k];
         pos.push(x * side, y, z);
+        pos0.push(x * side, y0, z0);
         if (region === 'top') atlas.top(z, x * side, o);
         else atlas.side(z, y, side > 0, o);
         uv.push(o[0], o[1]);
@@ -378,7 +466,11 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
             const xc = Math.abs(grid[si - 1][ring[k][0]][0]), xd = Math.abs(grid[si - 1][ring[k + 1][0]][0]);
             if (Math.max(xa, xb, xc, xd) < lim) continue;
           }
-          pushQuad(idx, a0 + k, a0 + k + 1, b0 + k + 1, b0 + k);
+          const ins = (s2, kk) => grid[s2][ring[kk][0]][5];
+          const ia = ins(si - 1, k), ib = ins(si - 1, k + 1), ic = ins(si, k + 1), id = ins(si, k);
+          // triangles entièrement dans un passage de roue : supprimés
+          if (!(ia && ib && id)) idx.push(a0 + k, a0 + k + 1, b0 + k);
+          if (!(ib && ic && id)) idx.push(a0 + k + 1, b0 + k + 1, b0 + k);
         }
       }
     });
@@ -386,11 +478,27 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
   patch(ringR, 'right');
   patch(ringT, 'top');
   patch(ringL, 'left');
+  // triangles retournés ou écrasés par la découpe : supprimés
+  const keep = [];
+  const nrm = (P, a, b, c) => {
+    const ux = P[b * 3] - P[a * 3], uy = P[b * 3 + 1] - P[a * 3 + 1], uz = P[b * 3 + 2] - P[a * 3 + 2];
+    const vx = P[c * 3] - P[a * 3], vy = P[c * 3 + 1] - P[a * 3 + 1], vz = P[c * 3 + 2] - P[a * 3 + 2];
+    return [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+  };
+  for (let i = 0; i < idx.length; i += 3) {
+    const a = idx[i], b = idx[i + 1], c = idx[i + 2];
+    const n1 = nrm(pos, a, b, c);
+    const l1 = Math.hypot(n1[0], n1[1], n1[2]);
+    if (l1 < 1e-9) continue;
+    const n0 = nrm(pos0, a, b, c);
+    if (n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2] <= 0 && Math.hypot(n0[0], n0[1], n0[2]) > 1e-9) continue;
+    keep.push(a, b, c);
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setIndex(idx);
+  g.setIndex(keep);
   // Arêtes vives (ligne d'épaule, bords de capot) : normales lissées sous 26°
   const creased = toCreasedNormals(g, (26 * Math.PI) / 180);
   fixNormals(creased);
@@ -402,14 +510,24 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
 // des vitres, le montant et le bord du vitrage central. Les vitres sont des blocs exacts de la grille ;
 // les encadrements (bandes aux coins arrondis) recouvrent les bords.
 // ---------------------------------------------------------------------------
-const SB = 0.075, G_TOP = 0.022, G_ARC = 0.03;
+const SB = 0.075;
 
-// Rangées (abscisses curvilignes) du côté droit pour une section
-function cabRows(sec, nSide, nArc) {
+// Largeurs des montants en t : rail de pavillon au-dessus des vitres latérales (rail) et largeur du montant
+// le long du pavillon entre la vitre latérale et le pare-brise / la lunette (pil). Interpolées du montant A au C.
+function pillarAt(shape, t) {
+  const st = shape.st;
+  const k = smoothstep(st.roofF, st.roofB, t);
+  return { rail: lerp(st.railF, st.railR, k), pil: lerp(st.pillarA, st.pillarC, k) };
+}
+
+// Rangées (abscisses curvilignes) du côté droit pour une section : [0, bas de vitre, …, haut de vitre,
+// bord de pavillon, bord du vitrage central, …, centre]
+function cabRows(shape, sec, nSide, nArc) {
   const { sR, S } = sec;
+  const { rail, pil } = pillarAt(shape, sec.t);
   const gb = Math.min(SB, sR * 0.3);
-  const gt = Math.max(gb, sR - G_TOP);
-  const ae = Math.min(sR + G_ARC, sR + (S - sR) * 0.4);
+  const gt = Math.min(sR - 0.001, Math.max(gb + 0.002, sR - rail));
+  const ae = Math.min(sR + pil, sR + (S - sR) * 0.45);
   const rows = [0, gb];
   for (let i = 1; i < nSide; i++) rows.push(lerp(gb, gt, i / nSide));
   rows.push(gt, sR, ae);
@@ -421,40 +539,47 @@ function cabRows(sec, nSide, nArc) {
   return rows;
 }
 
+// Hauteur utile de vitre latérale (m) en t
+function sideBand(shape, t) {
+  const r = cabRows(shape, shape.cabSection(t), 1, 1);
+  return r[2] - r[1];
+}
+
 // Disposition des vitrages d'un style (intervalles en t)
 export function windowLayout(shape) {
   const st = shape.st, L = shape.L;
-  const hAt = (t) => Math.max(0, shape.roof(t) - shape.belt);
   const tm = (m) => m / L;
+  const minBand = 0.075;
   let tA = st.ws;
-  while (tA < st.roofF && hAt(tA) < 0.11) tA += 0.002;
+  while (tA < st.roofF && sideBand(shape, tA) < minBand) tA += 0.002;
   let tC = st.rearB;
-  while (tC > st.roofB && hAt(tC) < 0.1) tC -= 0.002;
+  while (tC > st.roofB && sideBand(shape, tC) < minBand) tC -= 0.002;
+  tC = Math.min(tC, st.sideEnd ?? 1);
   const scale = L / 4.4;
   const zDoor = shape.zOf(st.ws) - 0.06;
   const blackB = st.bPillar !== 'body';
-  const gapB = tm(blackB ? 0.03 : 0.075);
+  const gapB = tm(blackB ? 0.035 : 0.085);
   const side = [];
   if (st.doors === 4) {
-    let tB = shape.tOf(zDoor + 1.02 * scale);
+    let tB = shape.tOf(zDoor + 1.04 * scale);
     tB = clamp(tB, st.roofF + 0.05, st.roofB - 0.08);
-    side.push({ t0: tA, t1: tB - gapB / 2, r: [0.012, 0.03, 0.025, 0.012] });
-    let tRD = Math.min(tC, shape.tOf(shape.zOf(tB) + 0.92 * scale));
-    side.push({ t0: tB + gapB / 2, t1: tRD - (tRD < tC - 0.03 ? tm(0.004) : 0), r: [0.012, 0.025, 0.06, 0.012] });
-    if (st.quarter && tC - tRD > tm(0.16)) side.push({ t0: tRD + gapB, t1: tC, r: [0.012, 0.02, 0.09, 0.015] });
+    side.push({ t0: tA, t1: tB - gapB / 2, r: [0.012, 0.035, 0.025, 0.012] });
+    const tRD = Math.min(tC, shape.tOf(shape.zOf(tB) + 0.9 * scale));
+    const quarter = st.quarter && tC - tRD > tm(0.14);
+    side.push({ t0: tB + gapB / 2, t1: quarter ? tRD : tC, r: [0.012, 0.025, quarter ? 0.03 : 0.09, 0.012] });
+    if (quarter) side.push({ t0: tRD + tm(0.06), t1: tC, r: [0.012, 0.02, 0.1, 0.015] });
   } else {
-    let tB = shape.tOf(zDoor + (st.doors === 0 ? 0.9 : 1.18) * scale);
-    tB = clamp(tB, st.roofF + 0.04, Math.min(st.roofB - 0.01, tC));
-    const quarter = st.quarter && !st.softTop && tC - tB > tm(0.2);
-    side.push({ t0: tA, t1: quarter ? tB : Math.min(tB, tC), r: [0.012, 0.03, quarter ? 0.03 : 0.07, 0.012] });
-    if (quarter) side.push({ t0: tB + gapB, t1: tC, r: [0.012, 0.03, 0.1, 0.015] });
+    let tB = shape.tOf(zDoor + (st.doors === 0 ? 0.9 : 1.2) * scale);
+    tB = clamp(tB, st.roofF + 0.04, Math.min(st.roofB + 0.02, tC));
+    const quarter = st.quarter && !st.softTop && tC - tB > tm(0.16);
+    side.push({ t0: tA, t1: quarter ? tB : Math.min(tB, tC), r: [0.012, 0.035, quarter ? 0.03 : 0.08, 0.012] });
+    if (quarter) side.push({ t0: tB + gapB, t1: tC, r: [0.012, 0.03, 0.12, 0.015] });
   }
-  const shield = { t0: st.ws + 0.001, t1: st.roofF - tm(0.012) };
+  const shield = { t0: st.ws + 0.001, t1: st.roofF - tm(0.03) };
   let back = null;
-  if (!st.softTop && st.doors !== 0) back = { t0: st.roofB + tm(0.015), t1: st.rearB - tm(st.rearB > 0.95 ? 0.02 : 0.012) };
-  if (st.doors === 0) back = null;
+  if (!st.softTop && st.doors !== 0) back = { t0: st.roofB + tm(0.03), t1: st.rearB - tm(st.rearB > 0.95 ? 0.04 : 0.025) };
   let roofPanel = null;
-  if (st.carbonRoof) roofPanel = { t0: st.roofF + tm(0.03), t1: st.roofB - tm(0.03), kind: 'carbon' };
+  if (st.carbonRoof) roofPanel = { t0: st.roofF + tm(0.04), t1: st.roofB - tm(0.04), kind: 'carbon' };
   return { side, shield, back, roofPanel, tA, tC };
 }
 
@@ -474,7 +599,7 @@ export function buildCabin(shape, atlas, lod = 0) {
   for (const m of marks) tset.push(m);
   tset.sort((a, b) => a - b);
   const ts = tset.filter((t, i) => i === 0 || t - tset[i - 1] > 0.0015);
-  const jRows = cabRows(shape.cabSection(ts[0]), nSide, nArc).length;
+  const jRows = cabRows(shape, shape.cabSection(ts[0]), nSide, nArc).length;
   const jGB = 1, jGT = 1 + nSide, jRail = jGT + 1, jAE = jRail + 1, jC = jRows - 1;
   const nJ = 2 * jC + 1; // rangées de l'anneau complet
   // positions de la grille
@@ -482,7 +607,7 @@ export function buildCabin(shape, atlas, lod = 0) {
   const tmp = {};
   ts.forEach((t, i) => {
     const sec = shape.cabSection(t);
-    const rows = cabRows(sec, nSide, nArc);
+    const rows = cabRows(shape, sec, nSide, nArc);
     for (let J = 0; J < nJ; J++) {
       const j = J <= jC ? J : 2 * jC - J;
       shape.cabPoint(sec, rows[j], tmp);
@@ -576,7 +701,7 @@ function buildFrames(shape, lay, nSide, nArc) {
   const wF = st.frameW;
   const rowsAt = (t) => {
     const sec = shape.cabSection(t);
-    return { sec, rows: cabRows(sec, nSide, nArc) };
+    return { sec, rows: cabRows(shape, sec, nSide, nArc) };
   };
   // Hauteur (m) en travers de la vitre et point de surface
   const hgtAt = (kind, t) => {
