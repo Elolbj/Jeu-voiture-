@@ -752,12 +752,24 @@ export function buildBodyParts(shape, spec, exhaust) {
     const y = shape.roof(t), z = shape.zOf(t);
     B.add('paint', plate([[0, 0], [0.16, 0], [0.13, 0.05], [0.09, 0.062]], 0.04).translate(0, y - 0.004, z - 0.06));
   } else if (st.antenna === 'whip') {
-    const t = Math.min(0.96, st.rearB + 0.05);
-    const P = shape.profile(t, {});
-    const g = new THREE.CylinderGeometry(0.0025, 0.004, 0.55, 5);
-    g.rotateX(0.35);
-    g.translate(-P.W * 0.72, P.topF + 0.27, P.z + 0.09);
-    B.add('blk', g);
+    if (st.bumpers === 'chrome') {
+      // antenne fouet chromée sur l'aile arrière (voitures anciennes)
+      const t = Math.min(0.95, st.rearB + 0.04);
+      const P = shape.profile(t, {});
+      const g = new THREE.CylinderGeometry(0.0018, 0.003, 0.42, 5);
+      g.rotateX(0.12);
+      g.translate(-P.W * 0.74, P.topF + 0.21, P.z);
+      B.add('chrome', g);
+    } else {
+      // courte antenne de toit inclinée vers l'arrière
+      const t = st.roofB - 0.02;
+      const g = new THREE.CylinderGeometry(0.0022, 0.0035, 0.3, 5);
+      g.translate(0, 0.15, 0);
+      g.rotateX(0.95);
+      g.translate(0, shape.roof(t) - 0.005, shape.zOf(t));
+      B.add('blk', g);
+      B.add('blk', new THREE.CylinderGeometry(0.012, 0.016, 0.02, 8).translate(0, shape.roof(t), shape.zOf(t)));
+    }
   }
   // --- Ailettes (canards) sur le bouclier avant ---
   if (st.canards) {

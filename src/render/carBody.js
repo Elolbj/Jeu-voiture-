@@ -2,7 +2,7 @@
 // habitacle (montants peints, vitrages découpés, encadrements arrondis) et projection de décalques
 // (optiques, calandres, plaques…) qui épousent exactement la surface.
 import * as THREE from 'three';
-import { clamp, lerp, smoothstep } from '../core/utils.js';
+import { clamp, lerp, smoothstep, sampleKeys } from '../core/utils.js';
 import { toCreasedNormals, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { resolveStyle } from './carStyles.js';
 
@@ -56,9 +56,14 @@ export class BodyShape {
     this.tAxleR = (this.zAxleR - this.zFront) / this.L;
     // hauteur minimale des ailes au-dessus des roues
     this.fenderNeed = this.r * 2 + 0.045 + (st.fenderGap ?? 0.065);
-    this.topKeys = [
+    // capot : courbe continue (Catmull-Rom) du nez au pied de pare-brise, bombé vers l'avant
+    this.hoodKeys = [
       [0, st.nose * H],
-      [st.ws * 0.55, lerp(st.nose, st.hood, 0.72) * H],
+      [st.ws * 0.2, lerp(st.nose, st.hood, st.hoodK0 ?? 0.5) * H],
+      [st.ws * 0.6, lerp(st.nose, st.hood, st.hoodK1 ?? 0.86) * H],
+      [st.ws, st.hood * H],
+    ];
+    this.topKeys = [
       [st.ws, st.hood * H],
       [st.ws + 0.03, st.belt * H],
       [st.rearB - 0.02, st.belt * H],
@@ -78,7 +83,7 @@ export class BodyShape {
     const st = this.st;
     const z = this.zFront + t * this.L;
     const dF = t * this.L, dR = (1 - t) * this.L;
-    let top = keyInterp(this.topKeys, t);
+    let top = t <= st.ws ? sampleKeys(this.hoodKeys, t) : keyInterp(this.topKeys, t);
     let topF = top;
     if (this.fenderNeed > top) {
       const R = this.archR;
@@ -153,8 +158,10 @@ export class BodyShape {
       x = W * Math.pow(Math.abs(c), 2 / n);
       const as = Math.pow(Math.abs(s), 2 / n);
       y = ys - (ys - bot) * as;
-      // flanc légèrement creusé sous la ligne de caractère + bas de caisse rentré
-      x -= W * 0.016 * Math.sin(Math.min(1, -theta / 0.9) * Math.PI);
+      // le point le plus large est la ligne de caractère : flanc incliné vers l'intérieur dessous,
+      // légèrement creusé, bas de caisse rentré
+      x -= W * (st.lean ?? 0.022) * as * P.e;
+      x -= W * 0.012 * Math.sin(Math.min(1, -theta / 0.9) * Math.PI);
       x -= W * st.tuck * smoothstep(0.55, 1, as) * P.e;
     } else {
       const n = st.nU;
@@ -211,7 +218,7 @@ export class BodyShape {
     const wr = wc * kr + (1 - smoothstep(0, 0.35, h)) * (wc - wc * kr);
     const rr = Math.min(h * 0.22, 0.09);
     const pts = [];
-    const bx = wc, by = belt - 0.03, rx = wr, ry = belt + h - rr;
+    const bx = wc, by = belt - 0.065, rx = wr, ry = belt + h - rr;
     const dx = rx - bx, dy = ry - by, l = Math.hypot(dx, dy) || 1;
     const nx = dy / l, ny = -dx / l;
     const bulge = Math.min(0.014, l * 0.05);
@@ -340,7 +347,7 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
   const p = {}, o = [0, 0];
   // découpe sous l'habitacle (détail complet seulement) : demi-largeur limite par station
   const st = shape.st;
-  const cut = lod ? null : stations.map((t) => (t > st.ws + 0.025 && t < st.rearB - 0.02 ? shape.cabSection(t).wc - 0.045 : 0));
+  const cut = lod ? null : stations.map((t) => (t > st.ws + 0.025 && t < st.rearB - 0.02 ? shape.cabSection(t).wc - 0.014 : 0));
   // positions par station (calculées une fois)
   const grid = stations.map((t) => thetas.map((th) => {
     shape.sectionPoint(t, th, p);
@@ -395,7 +402,7 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
 // des vitres, le montant et le bord du vitrage central. Les vitres sont des blocs exacts de la grille ;
 // les encadrements (bandes aux coins arrondis) recouvrent les bords.
 // ---------------------------------------------------------------------------
-const SB = 0.04, G_TOP = 0.022, G_ARC = 0.03;
+const SB = 0.075, G_TOP = 0.022, G_ARC = 0.03;
 
 // Rangées (abscisses curvilignes) du côté droit pour une section
 function cabRows(sec, nSide, nArc) {

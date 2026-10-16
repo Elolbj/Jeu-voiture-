@@ -5,6 +5,7 @@ import { CarModel } from './carModel.js';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { HorizontalBlurShader } from 'three/addons/shaders/HorizontalBlurShader.js';
 import { VerticalBlurShader } from 'three/addons/shaders/VerticalBlurShader.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 
 const BG = 0x0a0c10;
 
@@ -90,7 +91,18 @@ export class Showroom {
 
     // Éclairage trois points : principale (ombres douces), contre-jour, débouchage + ciel
     scene.add(new THREE.HemisphereLight(0xe2ebff, 0x0c0d10, 0.45));
-    const key = new THREE.DirectionalLight(0xfff8f0, 1.7);
+    // principale : grande boîte à lumière (reflets doux, pas de point éblouissant)
+    RectAreaLightUniformsLib.init();
+    const soft = new THREE.RectAreaLight(0xfff6ec, 3.2, 5, 2.4);
+    soft.position.set(3, 6.5, 4);
+    soft.lookAt(0, 0.4, 0);
+    scene.add(soft);
+    const back = new THREE.RectAreaLight(0xd2e2ff, 2.2, 6, 1.6);
+    back.position.set(-4.5, 3.2, -5.5);
+    back.lookAt(0, 0.5, 0);
+    scene.add(back);
+    // lumière directionnelle faible : uniquement pour les ombres portées
+    const key = new THREE.DirectionalLight(0xfff8f0, 0.55);
     key.position.set(3.5, 8, 4.5);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -101,10 +113,7 @@ export class Showroom {
     key.shadow.bias = -0.0003;
     key.shadow.normalBias = 0.02;
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0xc6dbff, 1.25);
-    rim.position.set(-5, 3.5, -6.5);
-    scene.add(rim);
-    const fill = new THREE.DirectionalLight(0xffe6cf, 0.45);
+    const fill = new THREE.DirectionalLight(0xffe6cf, 0.3);
     fill.position.set(-4.5, 2, 5);
     scene.add(fill);
 
