@@ -50,8 +50,10 @@ export class Track {
       const sg = segs[si];
       segStart.push(kap.length);
       if (sg.s !== undefined) {
+        // Ligne droite : dévers éventuel en valeur absolue (+ = côté droit plus bas)
         const n = Math.max(1, Math.round(sg.s / FINE));
-        for (let i = 0; i < n; i++) { kap.push(0); bank.push(0); }
+        const b = rad(sg.bank || 0);
+        for (let i = 0; i < n; i++) { kap.push(0); bank.push(b); }
       } else {
         const ang = rad(sg.a);
         const len = sg.r * Math.abs(ang);
@@ -80,10 +82,12 @@ export class Track {
     return { xs, zs, th, ks, bs, n, segStart };
   }
 
-  // Convertit un polygone [[x, z, rayon, dévers?], ...] en segments droites + arcs.
+  // Convertit un polygone [[x, z, rayon, dévers?, dévers de la droite suivante?], ...] en
+  // segments droites + arcs. Le dévers d'un sommet (°) penche toujours vers l'intérieur de
+  // son virage ; celui d'une droite (5e valeur) penche vers l'intérieur de la boucle.
   static polygonToSegments(points, closed) {
     const n = points.length;
-    const P = points.map((p) => ({ x: p[0], z: p[1], r: p[2] || 0, bank: p[3] || 0 }));
+    const P = points.map((p) => ({ x: p[0], z: p[1], r: p[2] || 0, bank: p[3] || 0, edgeBank: p[4] || 0 }));
     const head = (a, b) => Math.atan2(b.x - a.x, -(b.z - a.z));
     const wrap = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a <= -Math.PI) a += 2 * Math.PI; return a; };
     const turn = new Array(n).fill(0), tlen = new Array(n).fill(0);
@@ -93,12 +97,14 @@ export class Track {
       turn[i] = wrap(head(b, c) - head(a, b));
       tlen[i] = b.r * Math.tan(Math.abs(turn[i]) / 2);
     }
+    // Sens de rotation de la boucle (+1 horaire) pour orienter le dévers des droites
+    const loopSign = closed ? Math.sign(turn.reduce((acc, v) => acc + v, 0)) || 1 : 1;
     const segs = [];
     const edges = closed ? n : n - 1;
     for (let e = 0; e < edges; e++) {
       const a = P[e], b = P[(e + 1) % n];
       const len = Math.hypot(b.x - a.x, b.z - a.z) - tlen[e] - tlen[(e + 1) % n];
-      segs.push({ s: len });
+      segs.push(a.edgeBank ? { s: len, bank: a.edgeBank * loopSign } : { s: len });
       const v = (e + 1) % n;
       if (Math.abs(turn[v]) > 1e-6) segs.push({ a: (turn[v] * 180) / Math.PI, r: P[v].r, bank: P[v].bank });
     }
@@ -423,9 +429,16 @@ export class Track {
       ext[i] = m;
       sideOf[i] = sd; // >0 : virage à droite -> extérieur à gauche
     }
+    // Dégagement propre au côté intérieur de la boucle (ovales : mur extérieur proche, piste
+    // d'élan intérieure large)
+    let sumK = 0;
+    for (let i = 0; i < n; i++) sumK += this.kappa[i];
+    const inSide = sumK >= 0 ? 1 : -1;
+    const runIn = def.runoffInside ?? runoff;
+    const runBase = def.runoffSurface ?? 0;
     const L = new Float32Array(n), R = new Float32Array(n);
     for (let i = 0; i < n; i++) {
-      let l = hw + runoff, r = hw + runoff;
+      let l = hw + (inSide < 0 ? runIn : runoff), r = hw + (inSide > 0 ? runIn : runoff);
       if (sideOf[i] > 0) l += ext[i];
       else if (sideOf[i] < 0) r += ext[i];
       // côté intérieur : ne pas dépasser le centre de courbure
@@ -435,8 +448,9 @@ export class Track {
         if (k > 0) r = Math.min(r, lim); else l = Math.min(l, lim);
       }
       L[i] = l; R[i] = r;
-      this.runL[i] = def.runoffSurface ?? (sideOf[i] > 0 && ext[i] > 2 && def.gravel !== false ? 1 : 0);
-      this.runR[i] = def.runoffSurface ?? (sideOf[i] < 0 && ext[i] > 2 && def.gravel !== false ? 1 : 0);
+      // Bacs à graviers à l'extérieur des virages (sauf gravel: false), sinon surface de base
+      this.runL[i] = sideOf[i] > 0 && ext[i] > 2 && def.gravel !== false ? 1 : runBase;
+      this.runR[i] = sideOf[i] < 0 && ext[i] > 2 && def.gravel !== false ? 1 : runBase;
     }
     // Proximité d'autres portions du circuit
     const minSep = 40; // m le long du tracé

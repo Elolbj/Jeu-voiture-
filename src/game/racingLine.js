@@ -97,11 +97,20 @@ export class RacingLine {
     const driveFrac = spec.drive === '4WD' ? 1 : spec.drive === 'FF' ? spec.weightFront * 0.92 : (1 - spec.weightFront) * 1.08;
     const vTop = this.topSpeed(spec);
     const v = new Float32Array(n);
+    // Dévers (> 0 s'il penche vers l'intérieur du virage) : gravité favorable + charge accrue
+    const sB = new Float32Array(n), cB = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const b = t.bank[i] * Math.sign(this.kappa[i]);
+      sB[i] = Math.sin(b);
+      cB[i] = Math.cos(b);
+    }
+    const latOf = (i, vv) => Math.abs(vv * vv * Math.abs(this.kappa[i]) * cB[i] - G * sB[i]);
+    const normOf = (i, vv) => G * cB[i] + vv * vv * Math.abs(this.kappa[i]) * sB[i] + aeroK * vv * vv;
     for (let i = 0; i < n; i++) {
       const k = Math.abs(this.kappa[i]);
       // Prise en compte de la pente (bosses / compressions) de façon simple
-      const denom = k - mu * aeroK;
-      let vm = denom > 1e-5 ? Math.sqrt((mu * G) / denom) : vTop;
+      const denom = k * (cB[i] - mu * sB[i]) - mu * aeroK;
+      let vm = denom > 1e-5 ? Math.sqrt((G * (mu * cB[i] + sB[i])) / denom) : vTop;
       v[i] = Math.min(vm, vTop);
     }
     const ds = t.spacing;
@@ -111,8 +120,8 @@ export class RacingLine {
       for (let i = n - 2 + (t.closed ? 1 : 0); i >= 0; i--) {
         const j = t.idx(i + 1);
         const vj = v[j];
-        const lat = vj * vj * Math.abs(this.kappa[j]);
-        const gripTot = mu * (G + aeroK * vj * vj);
+        const lat = latOf(j, vj);
+        const gripTot = mu * normOf(j, vj);
         const brakeCap = G * (1.55 + (spec.aero.clF + spec.aero.clR) * 0.35) * (spec.brakeMul || 1) * 0.9;
         const longAvail = Math.min(brakeCap, Math.sqrt(Math.max(0, gripTot * gripTot - lat * lat)) * 0.95) + dragK * vj * vj;
         const grade = t.grade[i] * G;
@@ -125,8 +134,8 @@ export class RacingLine {
       for (let i = t.closed ? 0 : 1; i < n; i++) {
         const p = t.idx(i - 1);
         const vp = Math.max(v[p], 1);
-        const lat = vp * vp * Math.abs(this.kappa[p]);
-        const gripTot = mu * (G + aeroK * vp * vp) * driveFrac;
+        const lat = latOf(p, vp);
+        const gripTot = mu * normOf(p, vp) * driveFrac;
         const traction = Math.sqrt(Math.max(0, gripTot * gripTot - lat * lat));
         const acc = Math.min(power / (mass * vp), traction) - dragK * vp * vp - 0.15 - t.grade[p] * G;
         const vi = Math.sqrt(Math.max(0, vp * vp + 2 * acc * ds));
