@@ -1,16 +1,17 @@
 // Banc d'essai physique en ligne de commande : accélérations (0-100, 0-200, 400 m et 1 000 m départ arrêté),
 // vitesse maximale, freinage 100-0, accélération latérale stabilisée (90 et 160 km/h), progression PP / prix.
 //
-// Usage : node tools/physics-test.mjs [id …] [--ref] [--table] [--upg=eng1,tire_semi] [--notcs] [--json]
+// Usage : node tools/physics-test.mjs [id …] [--ref] [--table] [--check] [--upg=eng1,tire_semi] [--notcs] [--json]
 //   id …      voitures à tester (toutes par défaut ; un préfixe comme « kaze » sélectionne toute une marque)
 //   --ref     affiche à côté de chaque mesure la référence réelle comparable (REFS ci-dessous)
 //   --table   tableau de progression PP / prix trié par PP (sans simulation)
+//   --check   contrôle de cohérence des données (régimes, couple, rapports, pneus, marques…), code de sortie 1 si erreur
 //   --upg=…   applique des améliorations du préparateur avant le test
 //   --notcs   désactive l'antipatinage (départs arrêtés)
 //   --json    sortie JSON (une ligne par voiture)
 import { Vector3 } from 'three';
 import { Vehicle, SURFACES } from '../src/physics/vehicle.js';
-import { CARS, CAR_BY_ID, CATEGORIES, buildSpec, engineLabel } from '../src/data/cars.js';
+import { CARS, CAR_BY_ID, CATEGORIES, BRANDS, TIRES, buildSpec, engineLabel } from '../src/data/cars.js';
 
 // Références réelles comparables (chiffres constructeur ou essais presse, arrondis).
 // t100 / t200 en s, q400 / k1000 en s (départ arrêté), vmax en km/h (« lim. » = bridée électroniquement).
@@ -141,6 +142,59 @@ function selected() {
   if (!ids.length) return CARS;
   return CARS.filter((c) => ids.some((id) => c.id === id || (!CAR_BY_ID[id] && c.id.startsWith(id))));
 }
+
+// Contrôle de cohérence des données (sans simulation)
+function checkData() {
+  const errors = [], warns = [];
+  const err = (c, m) => errors.push(`${c.id}: ${m}`);
+  const warn = (c, m) => warns.push(`${c.id}: ${m}`);
+  const STYLE_IDS = ['hatch', 'hatch2', 'roadster', 'coupe', 'sedan', 'sedan2', 'gtcoupe', 'rearengine', 'muscle', 'supercar', 'gt3', 'proto', 'gt1', 'classic', 'classicmuscle', 'midship', 'wagon', 'hypercar'];
+  const RIMS = ['five', 'six', 'ten', 'split', 'mesh', 'race', 'turbine', 'classic', 'multi'];
+  const LAYOUTS = { L4: 4, B4: 4, L6: 6, B6: 6, V6: 6, V8: 8, V10: 10, V12: 12 };
+  for (const c of CARS) {
+    const e = c.engine, g = c.gearbox, w = c.wheel, d = c.dims;
+    if (!BRANDS[c.brand]) err(c, `marque inconnue dans BRANDS : ${c.brand}`);
+    else if (BRANDS[c.brand].country !== c.country) err(c, `pays ${c.country} ≠ pays de la marque ${BRANDS[c.brand].country}`);
+    if (!CATEGORIES[c.category]) err(c, `catégorie inconnue : ${c.category}`);
+    if (!TIRES[c.tires]) err(c, `pneus inconnus : ${c.tires}`);
+    if (!STYLE_IDS.includes(c.style)) err(c, `style de carrosserie inconnu : ${c.style}`);
+    if (!RIMS.includes(w.rim)) err(c, `style de jante inconnu : ${w.rim}`);
+    if (LAYOUTS[e.layout] !== e.cyl) err(c, `disposition ${e.layout} incohérente avec ${e.cyl} cylindres`);
+    if (!(e.idle < e.torqueRpm && e.torqueRpm <= e.hpRpm && e.hpRpm <= e.redline && e.redline < e.limiter)) err(c, 'régimes non croissants (ralenti < couple max ≤ puissance max ≤ zone rouge < rupteur)');
+    const tAtPower = (e.hp * 735.5) / ((e.hpRpm * Math.PI) / 30);
+    if (e.torque < tAtPower * 0.98) warn(c, `couple max ${e.torque} N·m < couple au régime de puissance ${tAtPower.toFixed(0)} N·m`);
+    const spec = e.hp / e.displacement;
+    if (!e.turbo && !e.hybrid && spec > (c.category === 'course' || c.category === 'proto' ? 175 : 135)) warn(c, `${spec.toFixed(0)} ch/L en atmosphérique : vérifier`);
+    for (let i = 1; i < g.ratios.length; i++) if (g.ratios[i] >= g.ratios[i - 1]) err(c, `rapports non décroissants (${g.ratios.join(', ')})`);
+    if (w.rimInch) {
+      const side = w.radius - (w.rimInch * 0.0254) / 2;
+      if (side < 0.055 || side > 0.16) warn(c, `flanc de pneu de ${(side * 1000).toFixed(0)} mm (rayon ${w.radius} m, jante ${w.rimInch}")`);
+    } else warn(c, 'wheel.rimInch absent');
+    if (d.wheelbase >= d.length * 0.72 || d.wheelbase < d.length * 0.5) warn(c, 'empattement / longueur inhabituel');
+    if (d.track >= d.width - 0.05) err(c, 'voie plus large que la caisse');
+    if (c.weightFront < 0.35 || c.weightFront > 0.66) warn(c, `répartition avant ${c.weightFront}`);
+    const decel = TIRES[c.tires].mu * 0.9 + (c.aero.clF + c.aero.clR) * 0.12; // décélération typique (g)
+    const ideal = c.weightFront + decel * c.cgHeight / d.wheelbase; // répartition de freinage idéale
+    if (c.brakeBias < ideal - 0.2 || c.brakeBias > ideal + 0.05) warn(c, `répartition de freinage ${c.brakeBias} loin de l'idéal ≈ ${ideal.toFixed(2)}`);
+    if (c.drive === '4WD' && c.frontSplit == null) warn(c, 'frontSplit absent (40 % par défaut)');
+    if (!c.storyOnly && (c.paints?.length ?? 0) < 5) warn(c, `${c.paints?.length ?? 0} teintes seulement`);
+    if (!c.desc || c.desc.length < 40) warn(c, 'description absente ou trop courte');
+    if (!c.tags?.length) warn(c, 'tags absents');
+  }
+  // Progression des prix : à PP croissant, le prix ne doit pas s'effondrer au sein d'une catégorie
+  // (les voitures de collection, cotées pour leur rareté, sont exclues)
+  for (const cat of Object.keys(CATEGORIES)) {
+    const list = CARS.filter((c) => c.category === cat && !c.storyOnly && !c.tags?.includes('Collection')).map((c) => ({ c, pp: buildSpec(c.id).pp })).sort((a, b) => a.pp - b.pp);
+    for (let i = 1; i < list.length; i++) {
+      if (list[i].c.price < list[i - 1].c.price * 0.6) warn(list[i].c, `prix ${list[i].c.price} très inférieur à ${list[i - 1].c.id} (${list[i - 1].c.price}) malgré un PP supérieur`);
+    }
+  }
+  for (const m of warns) console.log('  avertissement  ' + m);
+  for (const m of errors) console.log('  ERREUR         ' + m);
+  console.log(`${CARS.length} voitures, ${Object.keys(BRANDS).length} marques : ${errors.length} erreur(s), ${warns.length} avertissement(s)`);
+  process.exit(errors.length ? 1 : 0);
+}
+if (flag('check')) checkData();
 
 if (flag('table')) {
   // Progression PP / prix (sans simulation)

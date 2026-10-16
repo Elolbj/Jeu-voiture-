@@ -129,7 +129,7 @@ export const CARS = [
   }),
   C('valette_sprint', {
     brand: 'Valette', model: 'Sprint 2.0 RS', year: 2006, country: 'France', category: 'compacte', price: 24000,
-    desc: "La petite bombe française. Châssis vif, train avant incisif, boîte six rapports bien étagée.",
+    desc: "La petite bombe française de la division sport : 2 litres atmosphérique de 200 ch, châssis affûté et train avant incisif. Une traction qui se place au lever de pied.",
     tags: ['Atmosphérique', 'Traction'],
     style: 'hatch', dims: { length: 3.99, width: 1.77, height: 1.42, wheelbase: 2.58, track: 1.52 },
     wheel: { radius: 0.31, width: 0.215, rim: 'split', rimColor: '#2b2d31', rimInch: 17 },
@@ -227,11 +227,12 @@ export const CARS = [
     tags: ['Classique', 'Muscle car', 'Gros couple'],
     style: 'classicmuscle', dims: { length: 4.76, width: 1.81, height: 1.28, wheelbase: 2.74, track: 1.49 },
     wheel: { radius: 0.328, width: 0.205, rim: 'five', rimColor: '#c9ccd1', rimInch: 14 },
-    mass: 1600, cgHeight: 0.54, weightFront: 0.58, drive: 'FR',
+    mass: 1600, cgHeight: 0.52, weightFront: 0.58, drive: 'FR',
     engine: { layout: 'V8', cyl: 8, displacement: 7.0, hp: 335, hpRpm: 5200, torque: 597, torqueRpm: 3400, idle: 700, redline: 5800, limiter: 6000, inertia: 0.3 },
     gearbox: { ratios: [2.32, 1.69, 1.29, 1.0], final: 3.5, reverse: 2.32, shiftTime: 0.4 },
     tires: 'confort', susp: { freqF: 1.45, freqR: 1.5, zeta: 0.27, arbF: 0.65, arbR: 0.1 },
-    aero: { cd: 0.46, area: 2.1, clF: 0.0, clR: 0.0 }, steerLock: 34, lsd: 40, brakeBias: 0.7,
+    aero: { cd: 0.46, area: 2.1, clF: 0.0, clR: 0.0 }, steerLock: 34, lsd: 25, brakeBias: 0.74,
+    brakeMul: 0.8, // disques avant et tambours arrière d'époque (l'amélioration « Freins sport » les remplace)
     paints: ['#b11a21', '#f05a28', '#2f5fa5', '#efede4', '#1d2a22'],
   }),
   C('kaze_sora', {
@@ -255,7 +256,7 @@ export const CARS = [
   }),
   C('falco_gtr', {
     brand: 'Falco', model: 'GT-R V-spec', year: 2000, country: 'Japon', category: 'gt', price: 74000,
-    desc: "Le « Godzilla » : six cylindres biturbo, transmission intégrale intelligente. Une légende du Japon.",
+    desc: "Le « Godzilla » : six cylindres en ligne biturbo et transmission intégrale pilotée qui renvoie le couple vers l'avant dès que l'arrière décroche. Une légende née sur les circuits japonais.",
     tags: ['Légende', 'Biturbo', 'Intégrale'],
     style: 'gtcoupe', dims: { length: 4.6, width: 1.79, height: 1.36, wheelbase: 2.67, track: 1.48 },
     wheel: { radius: 0.335, width: 0.245, rim: 'six', rimColor: '#b9bcc2', rimInch: 18 },
@@ -306,7 +307,7 @@ export const CARS = [
     paints: ['#e6e6e1', '#f1ad00', '#24262a', '#2b6d3c', '#b51b1b'],
   }),
   C('vortex_acr', {
-    brand: 'Vortex', model: 'Serpent ACR', year: 2016, country: 'États-Unis', category: 'gt', price: 120000,
+    brand: 'Vortex', model: 'Serpent ACR', year: 2016, country: 'États-Unis', category: 'gt', price: 148000,
     desc: "V10 de 8,4 litres, 645 ch et un kit aérodynamique extrême qui plaque la voiture au sol. Brutale, viscérale, sans aucune concession.",
     tags: ['Piste', 'Appui', 'Atmosphérique'],
     style: 'muscle', dims: { length: 4.46, width: 1.95, height: 1.25, wheelbase: 2.51, track: 1.6 },
