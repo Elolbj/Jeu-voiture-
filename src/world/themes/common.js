@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Noise2D } from '../../core/noise.js';
 import { rng, clamp } from '../../core/utils.js';
-import { radialSprite } from '../textures.js';
+import { radialSprite, asphalt } from '../textures.js';
 import { surfaceY } from '../trackMesh.js';
 
 // ------------------------------------------------------------------ Éclairage
@@ -38,9 +38,52 @@ export function lightPools(group, points, color = 'rgba(255,200,130,0.55)', key 
   return m;
 }
 
+// Lumière diffuse sur la chaussée (éclairage nocturne, lueur de la ville) : ruban additif
+// le long du tracé, d'un mur à l'autre, modulé par le grain de l'enrobé pour ne pas
+// l'aplatir. color(side, s) → [r, g, b] ajouté (≈ teinte moyenne). Un seul appel.
+export function roadWash(sc, color) {
+  const t = sc.track;
+  const step = Math.max(1, Math.round(4 / t.spacing));
+  const pos = [], col = [], uv = [], idx = [];
+  const f = {};
+  let n = 0;
+  const last = t.closed ? t.count : t.count - 1;
+  for (let i = 0; i <= last; i += step) {
+    const ii = t.idx(Math.min(i, last));
+    for (const side of [-1, 1]) {
+      const lat = side * (side > 0 ? t.wallR[ii] : t.wallL[ii]);
+      frameAt(t, ii, lat, f);
+      pos.push(f.x, surfaceY(t, ii, lat) + 0.03, f.z);
+      col.push(...color(side, t.sArr[ii]).map((c) => c * 2.4));
+      uv.push(lat / 6, (i * t.spacing) / 6);
+    }
+    if (n > 0) idx.push(n - 2, n - 1, n, n - 1, n + 1, n); // face visible du dessus
+    n += 2;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    map: asphalt().map,
+    vertexColors: true,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  }));
+  m.renderOrder = 1;
+  m.frustumCulled = false;
+  sc.group.add(m);
+  return m;
+}
+
 // Mâts d'éclairage le long du circuit (alternés gauche / droite), tête lumineuse tournée
 // vers la piste. Renvoie les points des flaques de lumière (pour la nuit).
-export function floodlightPoles(sc, { step = 70, height = 16, offset = 2.5, lit = 1, color = 0xfff1d6, skip = null } = {}) {
+export function floodlightPoles(sc, { step = 70, height = 16, offset = 2.5, lit = 1, color = 0xfff1d6, skip = null, poolR = 13 } = {}) {
   const t = sc.track;
   const poleMat = sc.cachedMat('flPole', () => new THREE.MeshStandardMaterial({ color: 0x8a8f96, metalness: 0.7, roughness: 0.4 }));
   const headMat = sc.cachedMat('flHead' + color + lit, () => new THREE.MeshStandardMaterial({ color: 0xdedede, emissive: color, emissiveIntensity: lit * 5, roughness: 0.4 }));
@@ -65,7 +108,7 @@ export function floodlightPoles(sc, { step = 70, height = 16, offset = 2.5, lit 
     sc.bin.add('flHead' + color + lit, headMat, head, matR(hx, y + height - 0.2, hz, f.rot + Math.PI / 2, 0, side * 0.35));
     const cl = Math.max(0, wall - 6);
     const pf = frameAt(t, i, side * cl, {});
-    pools.push([pf.x, surfaceY(t, i, side * cl) + 0.05, pf.z, 13]);
+    pools.push([pf.x, surfaceY(t, i, side * cl) + 0.05, pf.z, poolR]);
   }
   sc.bin.noShadow('flHead' + color + lit);
   return pools;
@@ -210,8 +253,8 @@ export function bigScreen(sc, i, side, { w = 16, h = 9, lift = 7, back = 14 } = 
   const tex = screenTexture();
   const scr = sc.cachedMat('bigScreen', () => new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: sc.night ? 1.3 : 0.85, roughness: 0.4 }));
   const dark = sc.cachedMat('marshalDark', () => new THREE.MeshStandardMaterial({ color: 0x24272c, roughness: 0.5, metalness: 0.4 }));
-  sc.bin.add('bigScreen', scr, new THREE.PlaneGeometry(w, h), mat(f.x + nx * 0.42, y + lift + h / 2, f.z + nz * 0.42, rot));
-  sc.bin.add('marshalDark', dark, new THREE.BoxGeometry(w + 0.8, h + 0.8, 0.8), mat(f.x, y + lift + h / 2, f.z, rot));
+  sc.bin.add('bigScreen', scr, new THREE.PlaneGeometry(w, h), mat(f.x + nx * 0.5, y + lift + h / 2, f.z + nz * 0.5, rot));
+  sc.bin.add('marshalDark', dark, new THREE.BoxGeometry(w + 0.8, h + 0.8, 0.6), mat(f.x, y + lift + h / 2, f.z, rot));
   const c = Math.cos(rot), s = Math.sin(rot);
   for (const o of [-w * 0.3, w * 0.3]) sc.bin.add('marshalDark', dark, new THREE.BoxGeometry(0.7, lift, 0.7), mat(f.x + c * o, y + lift / 2, f.z - s * o, rot));
   return true;

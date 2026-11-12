@@ -56,7 +56,9 @@ export class Terrain {
     this.blend = cfg.blend;
     this.res = quality.terrainRes * (cfg.resMul || 1);
     const area = (b.maxX - b.minX + 2 * this.margin) * (b.maxZ - b.minZ + 2 * this.margin);
-    if (area / (this.res * this.res) > MAX_VERTS) this.res = Math.sqrt(area / MAX_VERTS);
+    // plafond de sommets (réduit en qualité moyenne / basse)
+    const maxVerts = MAX_VERTS * Math.min(1, (8 / quality.terrainRes) ** 2);
+    if (area / (this.res * this.res) > maxVerts) this.res = Math.sqrt(area / maxVerts);
     // Ovale : lac dans l'infield
     if (theme === 'oval') {
       this.lake = {

@@ -387,6 +387,7 @@ export class InstancedForest {
   // tile : taille des tuiles (m) ; lodDist : au-delà de cette distance (au bord de la tuile),
   // les essences qui en ont une utilisent leur version simplifiée (sans ombre portée)
   build(tile = 450, castShadow = true, lodDist = 260) {
+    lodDist *= this.lodScale ?? 1;
     const m4 = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const up = new THREE.Vector3(0, 1, 0);

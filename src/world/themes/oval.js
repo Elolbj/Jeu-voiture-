@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { InstancedForest } from '../vegetation.js';
 import { surfaceY } from '../trackMesh.js';
 import * as TX from '../textures.js';
-import { boxWorldUV, mat, matR, frameAt, infieldSide, glassFacade, catchFence, lightPools, makeCanvas, canvasTexture } from './common.js';
+import { boxWorldUV, mat, matR, frameAt, infieldSide, glassFacade, catchFence, lightPools, makeCanvas, canvasTexture, roadWash } from './common.js';
 
 export function buildOval(sc) {
   const t = sc.track;
@@ -34,7 +34,10 @@ export function buildOval(sc) {
 
   // ---------------------------------------------------------------- Éclairage de stade
   const pools = stadiumLights(sc, outside);
-  if (sc.night) lightPools(sc.group, pools, 'rgba(255,240,215,0.35)', 'poolOval');
+  if (sc.night) {
+    lightPools(sc.group, pools, 'rgba(255,240,215,0.35)', 'poolOval');
+    roadWash(sc, () => [0.05, 0.05, 0.047]);
+  }
 
   // ---------------------------------------------------------------- Végétation, parkings
   const f = sc.forest(InstancedForest, 23);

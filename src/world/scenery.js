@@ -181,6 +181,8 @@ export class Scenery {
 
   forest(Cls, seed) {
     const f = new Cls(this.group, seed);
+    // distance de passage à la version simplifiée réduite en qualité moyenne / basse
+    f.lodScale = clamp(this.quality.trees, 0.5, 1);
     this.forests = this.forests || [];
     this.forests.push(f);
     return f;

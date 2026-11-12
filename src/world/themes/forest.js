@@ -34,6 +34,12 @@ export function buildForest(sc) {
   }
   const inClearing = (i, side, margin = 0) => clearings.some((c) => c.side === side && dS(t.sArr[i], c.s) < c.len / 2 + margin);
   const nearStart = (i, d) => dS(t.sArr[i], t.startS) < d;
+  // emplacements des postes de commissaires (voir marshalPosts) : laissés libres
+  const POST_STEP = 380, nPost = Math.max(1, Math.round(POST_STEP / t.spacing)), i0Post = Math.floor(nPost / 2);
+  const nearPost = (i, side) => {
+    const k = Math.round((i - i0Post) / nPost);
+    return k >= 0 && Math.abs(i - i0Post - k * nPost) * t.spacing < 7 && (k % 2 ? 1 : -1) === side;
+  };
 
   // ---------------------------------------------------------------- Forêt
   const f = sc.forest(InstancedForest, 17);
@@ -44,8 +50,9 @@ export function buildForest(sc) {
       if (nearStart(i, side === infield ? 200 : 170)) continue;
       const clear = inClearing(i, side, 10);
       const wall = side > 0 ? t.wallR[i] : t.wallL[i];
+      const post = nearPost(i, side);
       for (let row = clear ? 2 : 0; row < rows + (clear ? 1 : 0); row++) {
-        if (r() > 0.92) continue;
+        if (r() > 0.92 || (post && row < 2)) continue;
         const lat = side * (wall + 4.5 + row * 6.5 + r() * 4);
         frameAt(t, i, lat, fr);
         const x = fr.x + (r() - 0.5) * 3, z = fr.z + (r() - 0.5) * 3;
@@ -67,7 +74,7 @@ export function buildForest(sc) {
     const blk = Math.floor(t.sArr[i] / 160);
     if ((blk * 7919) % 5 > 1 || nearStart(i, 220)) continue;
     const side = (blk % 2) * 2 - 1;
-    if (inClearing(i, side, 5)) continue;
+    if (inClearing(i, side, 5) || nearPost(i, side)) continue;
     const wall = side > 0 ? t.wallR[i] : t.wallL[i];
     frameAt(t, i, side * (wall + 1.8), fr);
     if (sc.clearance(fr.x, fr.z) < 1.5) continue;
@@ -84,7 +91,7 @@ export function buildForest(sc) {
 
   // ---------------------------------------------------------------- Panneaux, postes de commissaires
   signs(sc);
-  marshalPosts(sc, { step: 380, offset: 4.5, skip: (i) => { const d = Math.abs(t.sArr[i] - t.startS); return Math.min(d, L - d) < 220; } });
+  marshalPosts(sc, { step: POST_STEP, offset: 4.5, skip: (i) => { const d = Math.abs(t.sArr[i] - t.startS); return Math.min(d, L - d) < 220; } });
 
   // ---------------------------------------------------------------- Passerelles piétonnes
   const bridges = [0.07, 0.47, 0.73];

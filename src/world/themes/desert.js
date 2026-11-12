@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { InstancedForest } from '../vegetation.js';
 import { surfaceY } from '../trackMesh.js';
 import * as TX from '../textures.js';
-import { boxWorldUV, mat, frameAt, infieldSide, glassFacade, floodlightPoles, lightPools, catchFence, canvasTexture, makeCanvas, marshalPosts, bigScreen } from './common.js';
+import { boxWorldUV, mat, frameAt, infieldSide, glassFacade, floodlightPoles, lightPools, catchFence, canvasTexture, makeCanvas, marshalPosts, bigScreen, roadWash } from './common.js';
 
 export function buildDesert(sc) {
   const t = sc.track;
@@ -80,8 +80,12 @@ export function buildDesert(sc) {
 
   // ---------------------------------------------------------------- Éclairage, grillages, panneaux
   const lit = sc.night ? 1.2 : sc.env.preset.elev < 10 ? 0.8 : 0;
-  const pools = floodlightPoles(sc, { step: 66, height: 17, offset: 3, lit });
-  if (sc.night) lightPools(sc.group, pools, 'rgba(255,214,160,0.5)', 'poolDesert');
+  const pools = floodlightPoles(sc, { step: 66, height: 17, offset: 3, lit, poolR: 20 });
+  if (sc.night) {
+    // circuit éclairé comme en plein jour : flaques sous les mâts et lumière diffuse
+    lightPools(sc.group, pools, 'rgba(255,222,180,0.3)', 'poolDesert');
+    roadWash(sc, () => [0.045, 0.042, 0.036]);
+  }
   catchFence(sc, { sides: [-infield], fromH: 0.8, toH: 3.6, filter: (i) => { const d = Math.abs(t.sArr[i] - t.startS); return Math.min(d, t.length - d) < 300; } });
   marshalPosts(sc, { step: 300, offset: 5, skip: (i) => { const d = Math.abs(t.sArr[i] - t.startS); return Math.min(d, t.length - d) < 200; } });
   sc.buildBillboards();

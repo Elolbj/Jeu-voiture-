@@ -4,8 +4,7 @@
 import * as THREE from 'three';
 import { InstancedForest } from '../vegetation.js';
 import * as TX from '../textures.js';
-import { surfaceY } from '../trackMesh.js';
-import { boxWorldUV, mat, frameAt, infieldSide, glassFacade, catchFence, textAtlas, atlasPlane } from './common.js';
+import { boxWorldUV, mat, frameAt, infieldSide, glassFacade, catchFence, textAtlas, atlasPlane, roadWash } from './common.js';
 
 const NEON_WORDS = [
   ['SHINDEN', '#ff3b8d'], ['RAMEN', '#ffd23b'], ['KARAOKE', '#39d0ff'], ['PACHINKO', '#ff6a2b'],
@@ -107,8 +106,9 @@ export function buildCityNight(sc) {
   sc.grandstand(iStart, -infield, 90, 8);
 
   // ---------------------------------------------------------------- Rue : lampadaires, grillages
-  sc.buildStreetLights({ step: 21, R: 10.5, color: 'rgba(255,196,135,0.3)', key: 'poolNeon' });
-  if (night) roadGlow(sc);
+  sc.buildStreetLights({ step: 21, R: 10.5, color: 'rgba(255,196,135,0.12)', key: 'poolNeon' });
+  // lueur des enseignes et vitrines : violacée à droite, orangée à gauche
+  if (night) roadWash(sc, (side, u) => { const v = 0.45 + 0.15 * Math.sin(u / 37) + 0.08 * Math.sin(u / 11.3); return side > 0 ? [0.1 * v, 0.08 * v, 0.12 * v] : [0.13 * v, 0.085 * v, 0.06 * v]; });
   catchFence(sc, { fromH: 1.05, toH: 3.9, postStep: 4 });
 
   // passerelle lumineuse au-dessus de la ligne droite des stands
@@ -121,45 +121,6 @@ export function buildCityNight(sc) {
 
   // tour de télévision (repère lointain)
   tvTower(sc, b.maxX + 700, b.minZ - 650);
-}
-
-// Lueur diffuse de la ville sur la chaussée (enseignes, vitrines, phares) : un ruban additif
-// teinté le long du tracé, plus chaud près des carrefours éclairés. Un seul appel de rendu.
-function roadGlow(sc) {
-  const t = sc.track;
-  const step = Math.max(1, Math.round(4 / t.spacing));
-  const pos = [], col = [], idx = [];
-  const f = {};
-  let n = 0;
-  for (let i = 0; i <= t.count; i += step) {
-    const ii = t.idx(i);
-    const v = 0.4 + 0.15 * Math.sin(t.sArr[ii] / 37) + 0.1 * Math.sin(t.sArr[ii] / 11.3);
-    for (const side of [-1, 1]) {
-      const lat = side * (side > 0 ? t.wallR[ii] : t.wallL[ii]);
-      frameAt(t, ii, lat, f);
-      pos.push(f.x, surfaceY(t, ii, lat) + 0.03, f.z);
-      // bleu-violet côté enseignes, orangé au centre : simple variation par côté
-      col.push(side > 0 ? 0.11 * v : 0.13 * v, 0.075 * v, side > 0 ? 0.1 * v : 0.05 * v);
-    }
-    if (i > 0) idx.push(n - 2, n, n - 1, n - 1, n, n + 1);
-    n += 2;
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setIndex(idx);
-  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-    vertexColors: true,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-  }));
-  m.renderOrder = 1;
-  m.frustumCulled = false;
-  sc.group.add(m);
 }
 
 // Enseignes : verticales sur les angles des façades côté piste, horizontales en attique
