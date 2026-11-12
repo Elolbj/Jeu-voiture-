@@ -3,7 +3,7 @@
 // (optiques, calandres, plaques…) qui épousent exactement la surface.
 import * as THREE from 'three';
 import { clamp, lerp, smoothstep, sampleKeys } from '../core/utils.js';
-import { toCreasedNormals, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { resolveStyle } from './carStyles.js';
 
 // Interpolation par morceaux avec lissage (C1) entre clés [[t, v], ...]
@@ -215,6 +215,9 @@ export class BodyShape {
     const xc = xu + (xu - W) * k;
     const a5x = Math.max(xc * 0.05, xc - rT);
     const crown = (st.crown ?? 0.02) * e;
+    // ligne de caractère : arête de « crease » radians (demi-angle de part et d'autre)
+    const cr = Math.tan((st.crease ?? 0.12) / 2) * e;
+    const dL = (ys - bot - rB) * 0.6, dU = (yu - ys) * 0.5;
     const yCenter = top + crown - this.valley(t) * e;
     c = {
       e, z: P.z,
@@ -222,8 +225,8 @@ export class BodyShape {
       seg: [
         ['q', [0, bot], [(xr - rB) * 0.5, bot], [xr - rB, bot]],
         ['q', [xr - rB, bot], [xr, bot], [xr + (W - xr) * 0.18, bot + rB]],
-        ['q', [xr + (W - xr) * 0.18, bot + rB], [W, lerp(bot + rB, ys, 0.38)], [W, ys]],
-        ['q', [W, ys], [W - (W - xu) * 0.12, lerp(ys, yu, 0.5)], [xu, yu]],
+        ['q', [xr + (W - xr) * 0.18, bot + rB], [W - cr * dL, ys - dL], [W, ys]],
+        ['q', [W, ys], [W - cr * dU - (W - xu) * 0.1, ys + dU], [xu, yu]],
         ['q', [xu, yu], [xc, topF], [a5x, topF]],
         ['t', a5x, topF, yCenter],
       ],
@@ -406,10 +409,10 @@ export function fixNormals(g) {
 // ---------------------------------------------------------------------------
 export function buildBodyGeometry(shape, atlas, lod = 0) {
   const ts = [];
-  const N = lod ? 26 : 70;
+  const N = lod ? 26 : 62;
   for (let i = 0; i <= N; i++) ts.push(0.5 - 0.5 * Math.cos((i / N) * Math.PI));
   // stations serrées autour des passages de roues (découpe nette)
-  const step = (lod ? 0.07 : 0.024) / shape.L;
+  const step = (lod ? 0.07 : 0.028) / shape.L;
   for (const ta of [shape.tAxleF, shape.tAxleR]) {
     const dt = (shape.archR * 1.12) / shape.L;
     for (let t = ta - dt; t <= ta + dt + 1e-9; t += step) if (t > 0 && t < 1) ts.push(t);
@@ -421,13 +424,16 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
   for (let k = 0; k <= nLow; k++) thetas.push(-Math.PI / 2 + (k / nLow) * (Math.PI / 2));
   for (let k = 1; k <= nUp; k++) thetas.push((k / nUp) * (Math.PI / 2));
   const top = thetas.length - 1, seam = nLow + kS;
-  // anneau complet : indices dans thetas + côté
+  // anneau complet : [indice dans thetas, côté, groupe de lissage]. La ligne de caractère (θ = 0) est doublée :
+  // flanc inférieur et flanc supérieur ont des normales distinctes (arête nette).
   const ringR = [], ringT = [], ringL = [];
-  for (let k = 0; k <= seam; k++) ringR.push([k, 1]);
-  for (let k = seam; k <= top; k++) ringT.push([k, 1]);
-  for (let k = top - 1; k >= seam; k--) ringT.push([k, -1]);
-  for (let k = seam; k >= 0; k--) ringL.push([k, -1]);
-  const pos = [], pos0 = [], uv = [], col = [], idx = [];
+  for (let k = 0; k <= nLow; k++) ringR.push([k, 1, 0]);
+  for (let k = nLow; k <= seam; k++) ringR.push([k, 1, 1]);
+  for (let k = seam; k <= top; k++) ringT.push([k, 1, 1]);
+  for (let k = top - 1; k >= seam; k--) ringT.push([k, -1, 1]);
+  for (let k = seam; k >= nLow; k--) ringL.push([k, -1, 1]);
+  for (let k = nLow; k >= 0; k--) ringL.push([k, -1, 0]);
+  const pos = [], pos0 = [], uv = [], col = [], idx = [], keys = [];
   const p = {}, o = [0, 0];
   // découpe sous l'habitacle (détail complet seulement) : demi-largeur limite par station
   const st = shape.st;
@@ -440,13 +446,16 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
     const inside = th < 0.05 && shape.archSnap(q);
     return [p.x, q.y, q.z, p.bot, th, inside, p.y, p.z];
   }));
+  const nTh = thetas.length;
   const patch = (ring, region) => {
     const base = pos.length / 3, M = ring.length;
     stations.forEach((t, si) => {
-      for (const [k, side] of ring) {
+      for (const [k, side, grp] of ring) {
         const [x, y, z, bot, th, , y0, z0] = grid[si][k];
         pos.push(x * side, y, z);
         pos0.push(x * side, y0, z0);
+        // sommet logique (normales continues à travers les coutures d'atlas, séparées entre groupes)
+        keys.push(((si * nTh + k) * 2 + (side > 0 ? 1 : 0)) * 2 + grp);
         if (region === 'top') atlas.top(z, x * side, o);
         else atlas.side(z, y, side > 0, o);
         uv.push(o[0], o[1]);
@@ -459,6 +468,7 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
         const a0 = base + (si - 1) * M, b0 = base + si * M;
         const cutRow = region === 'top' && cut && cut[si - 1] && cut[si];
         for (let k = 0; k < M - 1; k++) {
+          if (ring[k][0] === ring[k + 1][0]) continue; // ligne doublée : pas de face
           // dessus de caisse sous l'habitacle : ouvert (on voit l'intérieur à travers les vitres)
           if (cutRow) {
             const lim = Math.min(cut[si - 1], cut[si]);
@@ -478,8 +488,9 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
   patch(ringR, 'right');
   patch(ringT, 'top');
   patch(ringL, 'left');
-  // triangles retournés ou écrasés par la découpe : supprimés
+  // triangles retournés ou écrasés par la découpe : supprimés ; normales pondérées par l'aire, par sommet logique
   const keep = [];
+  const acc = new Map();
   const nrm = (P, a, b, c) => {
     const ux = P[b * 3] - P[a * 3], uy = P[b * 3 + 1] - P[a * 3 + 1], uz = P[b * 3 + 2] - P[a * 3 + 2];
     const vx = P[c * 3] - P[a * 3], vy = P[c * 3 + 1] - P[a * 3 + 1], vz = P[c * 3 + 2] - P[a * 3 + 2];
@@ -493,16 +504,26 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
     const n0 = nrm(pos0, a, b, c);
     if (n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2] <= 0 && Math.hypot(n0[0], n0[1], n0[2]) > 1e-9) continue;
     keep.push(a, b, c);
+    for (const v of [a, b, c]) {
+      let n = acc.get(keys[v]);
+      if (!n) { n = [0, 0, 0]; acc.set(keys[v], n); }
+      n[0] += n1[0]; n[1] += n1[1]; n[2] += n1[2];
+    }
+  }
+  const nor = new Float32Array(pos.length);
+  for (let v = 0; v < keys.length; v++) {
+    const n = acc.get(keys[v]);
+    if (!n) { nor[v * 3 + 1] = 1; continue; }
+    const l = Math.hypot(n[0], n[1], n[2]) || 1;
+    nor[v * 3] = n[0] / l; nor[v * 3 + 1] = n[1] / l; nor[v * 3 + 2] = n[2] / l;
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.setIndex(keep);
-  // Arêtes vives (ligne d'épaule, bords de capot) : normales lissées sous 26°
-  const creased = toCreasedNormals(g, (26 * Math.PI) / 180);
-  fixNormals(creased);
-  return creased;
+  return g;
 }
 
 // ---------------------------------------------------------------------------
@@ -577,10 +598,14 @@ export function windowLayout(shape) {
   }
   const shield = { t0: st.ws + 0.001, t1: st.roofF - tm(0.03) };
   let back = null;
-  if (!st.softTop && st.doors !== 0) back = { t0: st.roofB + tm(0.03), t1: st.rearB - tm(st.rearB > 0.95 ? 0.04 : 0.025) };
+  if (st.softTop) {
+    // lunette de capote : petite, au milieu de la pente arrière
+    const a = lerp(st.roofB, st.rearB, 0.2), b = lerp(st.roofB, st.rearB, 0.78);
+    back = { t0: a, t1: b, soft: true };
+  } else if (st.doors !== 0) back = { t0: st.roofB + tm(0.03), t1: st.rearB - tm(st.rearB > 0.95 ? 0.04 : 0.025) };
   let roofPanel = null;
   if (st.carbonRoof) roofPanel = { t0: st.roofF + tm(0.04), t1: st.roofB - tm(0.04), kind: 'carbon' };
-  return { side, shield, back, roofPanel, tA, tC };
+  return { side, shield, back, roofPanel, tA, tC, header: tm(0.07) };
 }
 
 // Construit les géométries de l'habitacle : coque peinte, vitrages, partie spéciale (carbone / capote), encadrements
@@ -643,7 +668,12 @@ export function buildCabin(shape, atlas, lod = 0) {
     const j = J < jC ? J : 2 * jC - J - 1; // rangée basse (côté droit) de la cellule
     const central = j >= jAE;
     if (j >= jGB && j < jGT && inSide(tm)) return 'glass';
-    if (st.softTop && tm > lay.side[0].t1 + 0.004 && j >= jGB) return 'fabric';
+    if (st.softTop) {
+      // capote : pavillon et custodes en toile en arrière du cadre de pare-brise, petite lunette
+      if (central && inC(lay.back, tm)) return 'glass';
+      if (tm > lay.shield.t1 + lay.header && j >= jGT) return 'fabric';
+      if (tm > lay.side[0].t1 + 0.004 && j >= jGB) return 'fabric';
+    }
     if (central) {
       if (inC(lay.shield, tm) || inC(lay.back, tm)) return 'glass';
       if (inC(lay.roofPanel, tm)) return 'special';
@@ -932,7 +962,7 @@ export function decalGeometry(proj, o) {
   const f = proj.frame(o.dir);
   const n = o.n ?? 2, rot = o.rot ?? 0, taper = o.taper ?? 0, off = o.off ?? 0.004;
   const hole = o.hole ?? 0;
-  const rings = o.rings ?? (hole ? 2 : 4), seg = o.seg ?? 36;
+  const rings = o.rings ?? (hole ? 1 : 3), seg = o.seg ?? 28;
   const cr = Math.cos(rot), sr = Math.sin(rot);
   const outline = (phi) => {
     const c = Math.cos(phi), si = Math.sin(phi);

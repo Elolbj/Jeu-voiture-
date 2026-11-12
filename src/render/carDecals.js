@@ -25,47 +25,59 @@ const KEYMAP = {
 // Les couches successives sont décollées un peu plus (off) pour s'empiler.
 const L1 = 0.0052, L2 = 0.0066, L3 = 0.0078;
 export const HEAD = {
+  // années 90 : blocs rectangulaires à deux réflecteurs ronds, clignotant d'angle
   round: [
-    ['house', 0.66, 0.74, 0.135, 0.078, { n: 3.2 }],
-    ['chrome', 0.7, 0.745, 0.085, 0.056, { n: 3, off: L1 }],
-    ['lens', 0.71, 0.745, 0.04, 0.04, { off: L2 }],
-    ['amber', 0.52, 0.74, 0.03, 0.05, { n: 3.5, off: L1 }],
+    ['house', 0.68, 0.74, 0.17, 0.08, { n: 4, yaw: 0.3 }],
+    ['chrome', 0.74, 0.745, 0.07, 0.062, { n: 2.2, yaw: 0.3, off: L1 }],
+    ['chrome', 0.58, 0.745, 0.055, 0.05, { n: 2.2, yaw: 0.3, off: L1 }],
+    ['lens', 0.74, 0.745, 0.036, 0.036, { yaw: 0.3, off: L2 }],
+    ['lens', 0.58, 0.745, 0.026, 0.026, { yaw: 0.3, off: L2 }],
+    ['amber', 0.9, 0.74, 0.04, 0.06, { n: 4, yaw: 0.7, off: L1 }],
   ],
   twinround: [
-    ['house', 0.62, 0.8, 0.16, 0.07, { n: 2.4, rot: 0.12 }],
-    ['chrome', 0.72, 0.82, 0.055, 0.055, { off: L1 }], ['chrome', 0.53, 0.79, 0.055, 0.055, { off: L1 }],
-    ['lens', 0.72, 0.82, 0.034, 0.034, { off: L2 }], ['lens', 0.53, 0.79, 0.034, 0.034, { off: L2 }],
+    ['house', 0.62, 0.8, 0.17, 0.075, { n: 2.4, rot: 0.12, yaw: 0.25 }],
+    ['chrome', 0.72, 0.82, 0.058, 0.058, { yaw: 0.25, off: L1 }], ['chrome', 0.53, 0.79, 0.058, 0.058, { yaw: 0.25, off: L1 }],
+    ['lens', 0.72, 0.82, 0.034, 0.034, { yaw: 0.25, off: L2 }], ['lens', 0.53, 0.79, 0.034, 0.034, { yaw: 0.25, off: L2 }],
   ],
+  // ovales inclinés (roadster, coupé des années 90)
   oval: [
-    ['house', 0.63, 0.74, 0.15, 0.07, { n: 2.2, rot: 0.14 }],
-    ['chrome', 0.645, 0.745, 0.11, 0.05, { n: 2.2, rot: 0.14, off: L1 }],
-    ['lens', 0.68, 0.75, 0.04, 0.036, { off: L2 }],
-    ['amber', 0.52, 0.72, 0.035, 0.022, { n: 2.4, rot: 0.14, off: L2 }],
+    ['house', 0.66, 0.76, 0.18, 0.075, { n: 2.3, rot: 0.16, yaw: 0.35 }],
+    ['chrome', 0.69, 0.765, 0.13, 0.056, { n: 2.3, rot: 0.16, yaw: 0.35, off: L1 }],
+    ['lens', 0.74, 0.775, 0.042, 0.038, { yaw: 0.35, off: L2 }],
+    ['lens', 0.6, 0.75, 0.03, 0.028, { yaw: 0.35, off: L2 }],
+    ['amber', 0.88, 0.74, 0.04, 0.026, { n: 2.4, rot: 0.16, yaw: 0.6, off: L2 }],
   ],
+  // phares effilés modernes : boîtier en coin, deux projecteurs, signature LED
   slim: [
-    ['house', 0.66, 0.8, 0.22, 0.064, { n: 3, rot: 0.1, taper: -0.35 }],
-    ['chrome', 0.75, 0.83, 0.06, 0.045, { off: L1 }], ['chrome', 0.6, 0.8, 0.05, 0.037, { off: L1 }],
-    ['lens', 0.75, 0.83, 0.034, 0.03, { off: L2 }], ['lens', 0.6, 0.8, 0.029, 0.026, { off: L2 }],
-    ['drl', 0.65, 0.735, 0.19, 0.009, { n: 4, rot: 0.1, off: L3 }],
-    ['amber', 0.48, 0.77, 0.035, 0.016, { n: 4, rot: 0.1, off: L2 }],
+    ['house', 0.72, 0.8, 0.25, 0.072, { n: 3.2, rot: 0.12, taper: -0.45, yaw: 0.4 }],
+    ['chrome', 0.8, 0.83, 0.07, 0.046, { n: 2.6, yaw: 0.4, off: L1 }],
+    ['chrome', 0.64, 0.8, 0.06, 0.04, { n: 2.6, yaw: 0.4, off: L1 }],
+    ['lens', 0.8, 0.83, 0.034, 0.032, { yaw: 0.4, off: L2 }],
+    ['lens', 0.64, 0.8, 0.029, 0.027, { yaw: 0.4, off: L2 }],
+    ['drl', 0.71, 0.745, 0.22, 0.009, { n: 4, rot: 0.12, yaw: 0.4, off: L3 }],
+    ['amber', 0.93, 0.8, 0.04, 0.02, { n: 4, rot: 0.12, yaw: 0.55, off: L2 }],
   ],
+  // berline allemande : doubles phares ronds à anneaux lumineux
   twin: [
-    ['house', 0.64, 0.75, 0.19, 0.062, { n: 4.5 }],
-    ['chrome', 0.73, 0.75, 0.054, 0.054, { off: L1 }], ['chrome', 0.55, 0.75, 0.054, 0.054, { off: L1 }],
-    ['drl', 0.73, 0.75, 0.05, 0.05, { hole: 0.8, off: L3 }], ['drl', 0.55, 0.75, 0.05, 0.05, { hole: 0.8, off: L3 }],
-    ['lens', 0.73, 0.75, 0.025, 0.025, { off: L2 }], ['lens', 0.55, 0.75, 0.025, 0.025, { off: L2 }],
+    ['house', 0.66, 0.76, 0.21, 0.068, { n: 4.5, taper: -0.15, yaw: 0.35 }],
+    ['chrome', 0.76, 0.765, 0.058, 0.058, { yaw: 0.35, off: L1 }], ['chrome', 0.57, 0.755, 0.058, 0.058, { yaw: 0.35, off: L1 }],
+    ['drl', 0.76, 0.765, 0.053, 0.053, { hole: 0.8, yaw: 0.35, off: L3 }], ['drl', 0.57, 0.755, 0.053, 0.053, { hole: 0.8, yaw: 0.35, off: L3 }],
+    ['lens', 0.76, 0.765, 0.026, 0.026, { yaw: 0.35, off: L2 }], ['lens', 0.57, 0.755, 0.026, 0.026, { yaw: 0.35, off: L2 }],
+    ['amber', 0.9, 0.74, 0.035, 0.018, { n: 4, yaw: 0.6, off: L2 }],
   ],
+  // lames fines (supercars, prototypes)
   blade: [
-    ['house', 0.7, 1.02, 0.23, 0.042, { n: 3, rot: 0.2, taper: -0.55 }],
-    ['chrome', 0.78, 1.05, 0.065, 0.026, { n: 3, rot: 0.2, off: L1 }],
-    ['drl', 0.69, 0.99, 0.2, 0.0075, { n: 4, rot: 0.2, off: L3 }],
-    ['lens', 0.79, 1.05, 0.03, 0.018, { rot: 0.2, off: L2 }],
+    ['house', 0.72, 1.0, 0.25, 0.048, { n: 3, rot: 0.2, taper: -0.55, yaw: 0.45 }],
+    ['chrome', 0.8, 1.03, 0.07, 0.03, { n: 3, rot: 0.2, yaw: 0.45, off: L1 }],
+    ['drl', 0.7, 0.97, 0.22, 0.0085, { n: 4, rot: 0.2, yaw: 0.45, off: L3 }],
+    ['lens', 0.8, 1.03, 0.034, 0.02, { rot: 0.2, yaw: 0.45, off: L2 }],
+    ['lens', 0.68, 1.0, 0.026, 0.016, { rot: 0.2, yaw: 0.45, off: L2 }],
   ],
   classic: [
-    ['chrome', 0.64, 0.72, 0.1, 0.1, { hole: 0.8, off: 0.0062 }],
-    ['chrome', 0.64, 0.72, 0.084, 0.084, { off: 0.004 }],
-    ['lens', 0.64, 0.72, 0.03, 0.03, { off: 0.0052 }],
-    ['amber', 0.62, 0.36, 0.05, 0.024, { n: 2.6, off: L1 }],
+    ['chrome', 0.64, 0.72, 0.1, 0.1, { hole: 0.8, yaw: 0.2, off: 0.0062 }],
+    ['chrome', 0.64, 0.72, 0.084, 0.084, { yaw: 0.2, off: 0.004 }],
+    ['lens', 0.64, 0.72, 0.03, 0.03, { yaw: 0.2, off: 0.0052 }],
+    ['amber', 0.62, 0.36, 0.05, 0.024, { n: 2.6, yaw: 0.2, off: L1 }],
   ],
   quadround: [
     ['chrome', 0.8, 0.6, 0.075, 0.075, { hole: 0.76, off: 0.0074 }], ['chrome', 0.58, 0.6, 0.07, 0.07, { hole: 0.76, off: 0.0074 }],
@@ -73,73 +85,81 @@ export const HEAD = {
     ['lens', 0.8, 0.6, 0.024, 0.024, { off: 0.0072 }], ['lens', 0.58, 0.6, 0.022, 0.022, { off: 0.0072 }],
     ['amber', 0.62, 0.2, 0.06, 0.02, { n: 4, off: L1 }],
   ],
+  // phares escamotables (repliés) : contour sur le capot, feux de position et clignotants dans le bouclier
   popup: [
     ['trim', 0.6, 0.085, 0.22, 0.09, { face: 'top', n: 6, hole: 0.95, off: 0.0035 }],
-    ['house', 0.66, 0.62, 0.17, 0.034, { n: 4, rot: 0.04 }],
-    ['chrome', 0.58, 0.62, 0.07, 0.022, { n: 4, off: L1 }],
-    ['lens', 0.58, 0.62, 0.025, 0.018, { off: L2 }],
-    ['amber', 0.77, 0.62, 0.055, 0.022, { n: 4, off: L1 }],
+    ['house', 0.68, 0.64, 0.2, 0.036, { n: 4, rot: 0.04, yaw: 0.35 }],
+    ['white', 0.6, 0.64, 0.1, 0.022, { n: 4, yaw: 0.35, off: L1 }],
+    ['amber', 0.82, 0.64, 0.06, 0.022, { n: 4, yaw: 0.35, off: L1 }],
   ],
+  // matrice à LED (break moderne) : boîtier en coin, rangée de modules, signature en L
   led: [
-    ['house', 0.68, 0.84, 0.21, 0.055, { n: 4, rot: 0.08, taper: -0.4 }],
-    ['chrome', 0.63, 0.84, 0.05, 0.03, { n: 3, off: L1 }], ['chrome', 0.76, 0.85, 0.045, 0.028, { n: 3, off: L1 }],
-    ['lens', 0.63, 0.84, 0.024, 0.019, { off: L2 }], ['lens', 0.76, 0.85, 0.022, 0.018, { off: L2 }],
-    ['drl', 0.68, 0.79, 0.2, 0.008, { n: 6, rot: 0.08, off: L3 }],
-    ['drl', 0.86, 0.83, 0.008, 0.04, { n: 6, off: L3 }],
+    ['house', 0.7, 0.83, 0.24, 0.06, { n: 4, rot: 0.08, taper: -0.4, yaw: 0.4 }],
+    ['chrome', 0.6, 0.84, 0.03, 0.022, { n: 3, yaw: 0.4, off: L1 }], ['chrome', 0.68, 0.845, 0.03, 0.022, { n: 3, yaw: 0.4, off: L1 }],
+    ['chrome', 0.76, 0.85, 0.03, 0.022, { n: 3, yaw: 0.4, off: L1 }], ['chrome', 0.84, 0.855, 0.03, 0.022, { n: 3, yaw: 0.4, off: L1 }],
+    ['lens', 0.6, 0.84, 0.016, 0.013, { yaw: 0.4, off: L2 }], ['lens', 0.68, 0.845, 0.016, 0.013, { yaw: 0.4, off: L2 }],
+    ['lens', 0.76, 0.85, 0.016, 0.013, { yaw: 0.4, off: L2 }], ['lens', 0.84, 0.855, 0.016, 0.013, { yaw: 0.4, off: L2 }],
+    ['drl', 0.7, 0.785, 0.22, 0.008, { n: 6, rot: 0.08, yaw: 0.4, off: L3 }],
+    ['drl', 0.5, 0.82, 0.008, 0.04, { n: 6, yaw: 0.4, off: L3 }],
   ],
   frog: [['house', 0, 0, 0.1, 0.1, { n: 2 }], ['chrome', 0, 0, 0.082, 0.082, { n: 2, off: L1 }], ['lens', 0, 0, 0.04, 0.04, { off: L2 }], ['drl', 0, 0, 0.09, 0.09, { hole: 0.9, off: L3 }]],
 };
 
 // Feux arrière (aW : demi-largeur en fraction de la caisse ; center : décalque unique centré)
 export const TAIL = {
+  // compactes : blocs verticaux d'angle
   tall: [
-    ['red', 0.84, 0.74, 0.065, 0.13, { n: 3 }],
-    ['led', 0.84, 0.8, 0.045, 0.06, { n: 3, off: L1 }],
-    ['white', 0.84, 0.64, 0.042, 0.022, { n: 3, off: L1 }],
+    ['red', 0.85, 0.74, 0.08, 0.14, { n: 3.5, yaw: 0.55 }],
+    ['led', 0.85, 0.79, 0.055, 0.06, { n: 3, yaw: 0.55, off: L1 }],
+    ['white', 0.85, 0.645, 0.05, 0.024, { n: 3, yaw: 0.55, off: L1 }],
+    ['amber', 0.85, 0.7, 0.05, 0.016, { n: 3, yaw: 0.55, off: L1 }],
   ],
+  // coupé : feux effilés qui enveloppent l'aile
   slim: [
-    ['red', 0.74, 0.8, 0.2, 0.05, { n: 3, rot: -0.06, taper: -0.3 }],
-    ['led', 0.76, 0.8, 0.16, 0.012, { n: 4, rot: -0.06, off: L1 }],
-    ['white', 0.6, 0.79, 0.045, 0.02, { n: 4, rot: -0.06, off: L1 }],
+    ['red', 0.76, 0.82, 0.23, 0.058, { n: 3, rot: -0.06, taper: -0.35, yaw: 0.5 }],
+    ['led', 0.78, 0.82, 0.19, 0.011, { n: 4, rot: -0.06, yaw: 0.5, off: L1 }],
+    ['led', 0.84, 0.8, 0.06, 0.03, { n: 2.4, yaw: 0.5, hole: 0.7, off: L1 }],
+    ['white', 0.6, 0.8, 0.05, 0.02, { n: 4, rot: -0.06, yaw: 0.5, off: L1 }],
   ],
   oval: [
-    ['red', 0.72, 0.74, 0.14, 0.065, { n: 2.3 }],
-    ['led', 0.72, 0.74, 0.11, 0.05, { n: 2.3, hole: 0.62, off: L1 }],
-    ['white', 0.72, 0.74, 0.035, 0.018, { off: L1 }],
+    ['red', 0.74, 0.74, 0.15, 0.07, { n: 2.3, yaw: 0.5 }],
+    ['led', 0.74, 0.74, 0.12, 0.054, { n: 2.3, hole: 0.62, yaw: 0.5, off: L1 }],
+    ['white', 0.74, 0.74, 0.036, 0.02, { yaw: 0.5, off: L1 }],
   ],
+  // berlines : blocs rectangulaires sur l'aile et le coffre
   block: [
-    ['red', 0.72, 0.76, 0.19, 0.075, { n: 4 }],
-    ['led', 0.78, 0.78, 0.1, 0.035, { n: 4, off: L1 }],
-    ['white', 0.6, 0.74, 0.05, 0.024, { n: 4, off: L1 }],
-    ['amber', 0.86, 0.73, 0.035, 0.024, { n: 4, off: L1 }],
+    ['red', 0.74, 0.77, 0.21, 0.08, { n: 4, taper: -0.15, yaw: 0.45 }],
+    ['led', 0.8, 0.79, 0.11, 0.036, { n: 4, yaw: 0.45, off: L1 }],
+    ['white', 0.6, 0.75, 0.055, 0.026, { n: 4, yaw: 0.45, off: L1 }],
+    ['amber', 0.88, 0.73, 0.04, 0.024, { n: 4, yaw: 0.45, off: L1 }],
   ],
   quad: [
-    ['red', 0.8, 0.74, 0.075, 0.075, {}], ['red', 0.56, 0.74, 0.075, 0.075, {}],
-    ['led', 0.8, 0.74, 0.066, 0.066, { hole: 0.62, off: L1 }], ['led', 0.56, 0.74, 0.066, 0.066, { hole: 0.62, off: L1 }],
-    ['white', 0.56, 0.74, 0.03, 0.03, { off: L1 }],
+    ['red', 0.8, 0.74, 0.078, 0.078, { yaw: 0.35 }], ['red', 0.56, 0.74, 0.078, 0.078, { yaw: 0.35 }],
+    ['led', 0.8, 0.74, 0.068, 0.068, { hole: 0.62, yaw: 0.35, off: L1 }], ['led', 0.56, 0.74, 0.068, 0.068, { hole: 0.62, yaw: 0.35, off: L1 }],
+    ['white', 0.56, 0.74, 0.03, 0.03, { yaw: 0.35, off: L1 }],
   ],
   bar: [
     ['red', 0, 0.8, 0, 0.034, { n: 8, aW: 0.86, center: true }],
     ['led', 0, 0.8, 0, 0.009, { n: 6, aW: 0.84, center: true, off: L1 }],
-    ['red', 0.78, 0.8, 0.15, 0.05, { n: 4, off: 0.0045 }],
-    ['led', 0.8, 0.8, 0.12, 0.02, { n: 4, off: L2 }],
-    ['white', 0.66, 0.8, 0.035, 0.016, { n: 4, off: L2 }],
+    ['red', 0.8, 0.8, 0.16, 0.052, { n: 4, yaw: 0.4, off: 0.0045 }],
+    ['led', 0.82, 0.8, 0.12, 0.02, { n: 4, yaw: 0.4, off: L2 }],
+    ['white', 0.66, 0.8, 0.035, 0.016, { n: 4, yaw: 0.4, off: L2 }],
   ],
   blade: [
-    ['red', 0.76, 0.84, 0.2, 0.034, { n: 3, rot: -0.1, taper: -0.5 }],
-    ['led', 0.76, 0.84, 0.18, 0.009, { n: 4, rot: -0.1, off: L1 }],
+    ['red', 0.77, 0.84, 0.22, 0.036, { n: 3, rot: -0.1, taper: -0.5, yaw: 0.5 }],
+    ['led', 0.77, 0.84, 0.2, 0.009, { n: 4, rot: -0.1, yaw: 0.5, off: L1 }],
     ['led', 0, 0.84, 0, 0.006, { n: 6, aW: 0.5, center: true, off: 0.006 }],
   ],
   round: [
-    ['red', 0.76, 0.76, 0.07, 0.07, {}], ['red', 0.52, 0.76, 0.065, 0.065, {}],
-    ['led', 0.76, 0.76, 0.045, 0.045, { off: L1 }], ['led', 0.52, 0.76, 0.04, 0.04, { off: L1 }],
+    ['red', 0.77, 0.76, 0.075, 0.075, { yaw: 0.35 }], ['red', 0.53, 0.76, 0.068, 0.068, { yaw: 0.35 }],
+    ['led', 0.77, 0.76, 0.048, 0.048, { yaw: 0.35, off: L1 }], ['led', 0.53, 0.76, 0.042, 0.042, { yaw: 0.35, off: L1 }],
   ],
   classic: [
-    ['chrome', 0.74, 0.7, 0.075, 0.075, { hole: 0.78, off: 0.0062 }],
-    ['red', 0.74, 0.7, 0.062, 0.062, {}],
-    ['led', 0.74, 0.7, 0.04, 0.04, { off: L1 }],
-    ['chrome', 0.5, 0.7, 0.05, 0.05, { hole: 0.74, off: 0.0062 }],
-    ['amber', 0.5, 0.7, 0.04, 0.04, {}],
+    ['chrome', 0.74, 0.7, 0.075, 0.075, { hole: 0.78, yaw: 0.25, off: 0.0062 }],
+    ['red', 0.74, 0.7, 0.062, 0.062, { yaw: 0.25 }],
+    ['led', 0.74, 0.7, 0.04, 0.04, { yaw: 0.25, off: L1 }],
+    ['chrome', 0.5, 0.7, 0.05, 0.05, { hole: 0.74, yaw: 0.25, off: 0.0062 }],
+    ['amber', 0.5, 0.7, 0.04, 0.04, { yaw: 0.25 }],
   ],
   triple: [
     ['red', 0.32, 0.7, 0.085, 0.072, { n: 7 }], ['red', 0.55, 0.7, 0.085, 0.072, { n: 7 }], ['red', 0.78, 0.7, 0.085, 0.072, { n: 7 }],
@@ -149,13 +169,13 @@ export const TAIL = {
   wide: [
     ['red', 0, 0.83, 0, 0.022, { n: 8, aW: 0.86, center: true }],
     ['led', 0, 0.83, 0, 0.006, { n: 8, aW: 0.84, center: true, off: L1 }],
-    ['red', 0.78, 0.8, 0.16, 0.055, { n: 4, taper: -0.35 }],
-    ['led', 0.8, 0.8, 0.12, 0.04, { n: 4, taper: -0.35, hole: 0.82, off: L1 }],
-    ['white', 0.72, 0.79, 0.04, 0.016, { n: 4, off: L1 }],
+    ['red', 0.78, 0.8, 0.17, 0.058, { n: 4, taper: -0.35, yaw: 0.45 }],
+    ['led', 0.8, 0.8, 0.13, 0.042, { n: 4, taper: -0.35, hole: 0.82, yaw: 0.45, off: L1 }],
+    ['white', 0.72, 0.79, 0.04, 0.016, { n: 4, yaw: 0.45, off: L1 }],
   ],
   ring: [
-    ['house', 0.8, 0.78, 0.072, 0.072, {}], ['house', 0.58, 0.78, 0.066, 0.066, {}],
-    ['led', 0.8, 0.78, 0.066, 0.066, { hole: 0.66, off: L1 }], ['led', 0.58, 0.78, 0.06, 0.06, { hole: 0.66, off: L1 }],
+    ['house', 0.8, 0.78, 0.075, 0.075, { yaw: 0.3 }], ['house', 0.58, 0.78, 0.068, 0.068, { yaw: 0.3 }],
+    ['led', 0.8, 0.78, 0.069, 0.069, { hole: 0.66, yaw: 0.3, off: L1 }], ['led', 0.58, 0.78, 0.062, 0.062, { hole: 0.66, yaw: 0.3, off: L1 }],
   ],
 };
 
@@ -216,7 +236,8 @@ export function exhaustLayout(shape, spec) {
 // Construit les décalques regroupés par matériau ; renvoie aussi les points d'ancrage des échappements
 export function buildDecals(shape, spec, bodyGeo, lod = 0) {
   const st = shape.st, H = shape.H, W = shape.Wmax;
-  const proj = new SurfaceProjector(bodyGeo);
+  // projecteur partagé entre les niveaux de détail (libéré par l'appelant : delete bodyGeo.__proj)
+  const proj = bodyGeo.__proj || (bodyGeo.__proj = new SurfaceProjector(bodyGeo));
   const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Zp = new THREE.Vector3(0, 0, 1);
   const nX = X.clone().negate(), nY = Y.clone().negate(), nZ = Zp.clone().negate();
   const zF = shape.zFront, zR = shape.zRear;
@@ -252,9 +273,12 @@ export function buildDecals(shape, spec, bodyGeo, lod = 0) {
       if (face === 'front') {
         c = new THREE.Vector3(fx * W, lerp(fLow, fTop, fy), zF - 0.05);
         a1 = o.center ? nX : X; a2 = Y; dir = Zp;
+        // yaw : projection oblique depuis l'extérieur (optiques qui enveloppent le coin de caisse)
+        if (o.yaw) { dir = Zp.clone().applyAxisAngle(Y, -o.yaw); a1 = X.clone().applyAxisAngle(Y, -o.yaw); }
       } else if (face === 'rear') {
         c = new THREE.Vector3(fx * W, lerp(rLow, rTop, fy), zR + 0.05);
         a1 = X; a2 = Y; dir = nZ;
+        if (o.yaw) { dir = nZ.clone().applyAxisAngle(Y, o.yaw); a1 = X.clone().applyAxisAngle(Y, o.yaw); }
       } else if (face === 'top') {
         c = new THREE.Vector3(fx * W, H + 0.4, zF + fy * shape.L);
         a1 = X; a2 = nZ; dir = nY;
@@ -287,7 +311,9 @@ export function buildDecals(shape, spec, bodyGeo, lod = 0) {
   // antibrouillards
   if (st.fog) place([['house', 0.74, 0.2, 0.052, 0.04, { n: 2.6 }], ['chrome', 0.74, 0.2, 0.038, 0.03, { n: 2.4, off: L1 }], ['lens', 0.74, 0.2, 0.02, 0.018, { off: L2 }]], 'front');
   // jupe arrière / diffuseur (fond sombre)
-  place([['vent', 0, 0.1, 0, st.race ? 0.11 : 0.075, { n: 6, aW: st.race || st.diffuser === 'big' ? 0.9 : 0.78, center: true }]], 'rear');
+  place([['vent', 0, 0.12, 0, st.race ? 0.13 : st.diffuser ? 0.11 : 0.085, { n: 6, aW: st.race || st.diffuser === 'big' ? 0.9 : 0.8, center: true }]], 'rear');
+  // catadioptres aux coins du bouclier arrière
+  if (!st.race && st.bumpers !== 'chrome') place([['red', 0.8, 0.3, 0.05, 0.011, { n: 4, yaw: 0.45, off: 0.004 }]], 'rear');
   if (!low) {
     // logos de marque
     if (st.badge && !st.race) {

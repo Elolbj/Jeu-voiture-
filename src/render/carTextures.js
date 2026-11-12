@@ -72,7 +72,7 @@ export function flakeNormal() {
     }
     g.putImageData(img, 0, 0);
     const t = tex(c, { srgb: false, repeat: true });
-    t.repeat.set(60, 60);
+    t.repeat.set(90, 90);
     return t;
   });
 }
@@ -168,7 +168,7 @@ export function meshGrille() {
 // Pneu : bande de roulement à rainures + flanc extérieur avec inscriptions en relief.
 // Disposition (v de 0 à 1 le long du profil) : voir tireGeometry dans carParts.js.
 export const TIRE_V = { sideOut0: 0.04, sideOut1: 0.3, tread0: 0.38, tread1: 0.62, sideIn0: 0.7 };
-export function tireTexture(label = 'TRAJECTOIRE', size = '225/45 R17') {
+export function tireTexture(label = 'TRAJECTOIRE', size = 'SPORT CONTACT') {
   return cached('tire' + label + size, () => {
     const W = 1024, H = 128;
     const c = canvas(W, H);
@@ -206,9 +206,9 @@ export function tireTexture(label = 'TRAJECTOIRE', size = '225/45 R17') {
     };
     for (let k = 0; k < 2; k++) {
       const off = k * W / 2;
-      write(label, off + W * 0.16, 'bold 22px Arial, Helvetica, sans-serif', '#9a9ca2');
-      write(size, off + W * 0.37, 'bold 14px Arial, Helvetica, sans-serif', '#66686e');
-      write('RADIAL TUBELESS', off + W * 0.45, '11px Arial, Helvetica, sans-serif', '#55575c');
+      write(label, off + W * 0.14, 'bold 16px Arial, Helvetica, sans-serif', '#8e9096');
+      write(size, off + W * 0.3, 'bold 11px Arial, Helvetica, sans-serif', '#606268');
+      write('RADIAL TUBELESS', off + W * 0.4, '9px Arial, Helvetica, sans-serif', '#55575c');
     }
     return tex(c, { repeat: true });
   });

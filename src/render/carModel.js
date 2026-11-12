@@ -7,7 +7,7 @@ import { rng } from '../core/utils.js';
 import { STYLES, resolveStyle } from './carStyles.js';
 import { BodyShape, Atlas, buildBodyGeometry, buildCabin, atlasUV, fixNormals } from './carBody.js';
 import { buildDecals } from './carDecals.js';
-import { buildWheel, buildWing, wingKind, buildBodyParts, wellsGeometry, lowWheelsGeometry, rimGeometry, RIM_STYLES, prep } from './carParts.js';
+import { buildWheel, buildWing, wingKind, buildBodyParts, wellsGeometry, lowWheelsGeometry, rimGeometry, rimRadius, RIM_STYLES } from './carParts.js';
 import { buildInterior, buildDriver, gloveParts } from './carInterior.js';
 import { paintLivery, releaseLivery, LIVERY_DESIGNS, contrast } from './livery.js';
 import { flakeNormal, carbonTextures, honeycomb, barsGrille, meshGrille, plateTexture, badgeAtlas, gaugeTexture, seatTexture, wheelAtlas } from './carTextures.js';
@@ -85,10 +85,10 @@ function helmetMaterial(color) {
 // Finitions de peinture
 const FINISH = {
   gloss: { metalness: 0.02, roughness: 0.3, clearcoat: 1, ccr: 0.03, flakes: 0 },
-  metallic: { metalness: 0.6, roughness: 0.32, clearcoat: 1, ccr: 0.03, flakes: 0.32 },
-  pearl: { metalness: 0.38, roughness: 0.3, clearcoat: 1, ccr: 0.03, flakes: 0.22, sheen: 1, iridescence: 0.3 },
+  metallic: { metalness: 0.55, roughness: 0.34, clearcoat: 1, ccr: 0.03, flakes: 0.13 },
+  pearl: { metalness: 0.35, roughness: 0.3, clearcoat: 1, ccr: 0.03, flakes: 0.09, sheen: 0.35, iridescence: 0.25 },
   matte: { metalness: 0.12, roughness: 0.66, clearcoat: 0, ccr: 0.5, flakes: 0 },
-  satin: { metalness: 0.32, roughness: 0.46, clearcoat: 0.35, ccr: 0.38, flakes: 0.14 },
+  satin: { metalness: 0.3, roughness: 0.46, clearcoat: 0.35, ccr: 0.38, flakes: 0.06 },
   chrome: { metalness: 1, roughness: 0.07, clearcoat: 0.5, ccr: 0.02, flakes: 0 },
 };
 const CALIPER = { compacte: '#3a3c40', sport: '#b01515', gt: '#d4a017', supercar: '#d4a017', course: '#c81010', proto: '#1a1a1c' };
@@ -177,6 +177,7 @@ function getCache(spec) {
   const decals = buildDecals(shape, spec, body, 0);
   const bodyLow = markShared(buildBodyGeometry(shape, atlas, 1));
   const decalsLow = buildDecals(shape, spec, body, 1);
+  delete body.__proj;
   for (const g of Object.values(decals.geos)) markShared(g);
   for (const g of Object.values(decalsLow.geos)) markShared(g);
   const parts = buildBodyParts(shape, spec, decals.exhaust).merge();
@@ -398,8 +399,8 @@ export class CarModel {
     this.interior.add(sw);
     this.steeringWheel = sw;
     this.driverEye = IT.frame.eye.clone();
-    // --- Pilote (en course) ---
-    if (opts.driver) this.buildDriver();
+    // --- Pilote : en course par défaut, jamais en vitrine ---
+    if (opts.driver ?? !opts.showroom) this.buildDriver();
     // --- Niveau de détail lointain ---
     add(this.lod1, C.bodyLow, this.paint, true);
     add(this.lod1, C.cabLow.paint, this.paint, true);
@@ -446,7 +447,7 @@ export class CarModel {
     if (!prev || !same(prev.paint, cu.paint) || !same(prev.livery, cu.livery)) this.applyPaint(cu);
     // jantes
     if (!prev || prev.rims.style !== cu.rims.style) {
-      const g = rimGeometry(this.spec.wheel.radius, this.spec.wheel.width, cu.rims.style);
+      const g = rimGeometry(this.spec.wheel.radius, this.spec.wheel.width, cu.rims.style, rimRadius(this.spec.wheel));
       for (const w of this.wheels) w.rim.geometry = g;
     }
     if (!prev || !same(prev.rims, cu.rims)) {

@@ -76,7 +76,6 @@ export class Showroom {
       color: 0x0b0c0f, roughness: 0.58, metalness: 0.0, transparent: true, opacity: 0.88, envMapIntensity: 0.45, depthWrite: false,
     }));
     floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
     floor.renderOrder = -1;
     scene.add(floor);
     this.floor = floor;
@@ -90,36 +89,29 @@ export class Showroom {
     const plate = new THREE.Mesh(new THREE.CircleGeometry(3.5, 96), new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.45, metalness: 0.2, transparent: true, opacity: 0.35, depthWrite: false }));
     plate.rotation.x = -Math.PI / 2;
     plate.position.y = 0.002;
-    plate.receiveShadow = true;
     this.turntable.add(plate);
 
-    // Éclairage trois points : principale (ombres douces), contre-jour, débouchage + ciel
-    scene.add(new THREE.HemisphereLight(0xe2ebff, 0x0c0d10, 0.45));
-    // principale : grande boîte à lumière (reflets doux, pas de point éblouissant)
+    // Éclairage trois points en boîtes à lumière (reflets allongés et doux, aucun point spéculaire) :
+    // principale au plafond, bandeau latéral, contre-jour ; ciel faible. Pas de lumière ponctuelle ni
+    // directionnelle : l'ancrage au sol vient de l'ombre de contact précalculée.
+    scene.add(new THREE.HemisphereLight(0xe2ebff, 0x0c0d10, 0.4));
     RectAreaLightUniformsLib.init();
-    const soft = new THREE.RectAreaLight(0xfff6ec, 3.2, 5, 2.4);
-    soft.position.set(3, 6.5, 4);
-    soft.lookAt(0, 0.4, 0);
-    scene.add(soft);
-    const back = new THREE.RectAreaLight(0xd2e2ff, 2.2, 6, 1.6);
-    back.position.set(-4.5, 3.2, -5.5);
+    const key = new THREE.RectAreaLight(0xfff6ec, 2.4, 7, 3.2);
+    key.position.set(2.2, 6.2, 2.6);
+    key.lookAt(0, 0.3, 0);
+    scene.add(key);
+    const strip = new THREE.RectAreaLight(0xe8f0ff, 2.2, 1.2, 4.5);
+    strip.position.set(-5.5, 2.2, 1.5);
+    strip.lookAt(0, 0.6, 0);
+    scene.add(strip);
+    const back = new THREE.RectAreaLight(0xd2e2ff, 2.0, 6, 1.6);
+    back.position.set(-3.5, 3.2, -5.5);
     back.lookAt(0, 0.5, 0);
     scene.add(back);
-    // lumière directionnelle faible : uniquement pour les ombres portées
-    const key = new THREE.DirectionalLight(0xfff8f0, 0.55);
-    key.position.set(3.5, 8, 4.5);
-    key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
-    key.shadow.camera.left = key.shadow.camera.bottom = -4.5;
-    key.shadow.camera.right = key.shadow.camera.top = 4.5;
-    key.shadow.camera.near = 1;
-    key.shadow.camera.far = 20;
-    key.shadow.bias = -0.0003;
-    key.shadow.normalBias = 0.02;
-    scene.add(key);
-    const fill = new THREE.DirectionalLight(0xffe6cf, 0.3);
-    fill.position.set(-4.5, 2, 5);
-    scene.add(fill);
+    const front = new THREE.RectAreaLight(0xffe9d6, 1.2, 4, 1.4);
+    front.position.set(4.5, 1.6, -4);
+    front.lookAt(0, 0.5, 0);
+    scene.add(front);
 
     this.camera = new THREE.PerspectiveCamera(32, 16 / 9, 0.1, 200);
     this.camAngle = 0.7;
@@ -138,7 +130,7 @@ export class Showroom {
       this.turntable.remove(this.car.root);
       this.car.dispose();
     }
-    this.car = new CarModel(spec, { color, liveryRes: 2048, ...opts });
+    this.car = new CarModel(spec, { color, liveryRes: 2048, showroom: true, ...opts });
     this.car.root.position.y = spec.cgHeight - (spec.lowered || 0);
     this.car.setStatic(0.25);
     this.turntable.add(this.car.root);

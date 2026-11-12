@@ -36,23 +36,25 @@ export function cockpitFrame(shape) {
   const driverX = -shape.Wmax * st.cabW * 0.42;
   const roofY = st.roof * H;
   const eye = new THREE.Vector3(driverX, belt + (roofY - belt) * 0.55, zSeat - 0.05);
-  const floor = shape.clear + 0.1;
+  const floor = shape.clear + (roofY < 1.2 ? 0.05 : 0.1);
   const wheel = new THREE.Vector3(driverX, belt + 0.02, zSeat - 0.42);
   return { belt, zSeat, driverX, roofY, eye, floor, wheel, tSeat };
 }
 
-// Baquet : assise, dossier incliné, flancs de maintien
-function bucketSeat(B, x, floor, z, race) {
-  const hip = floor + 0.13;
-  const tilt = -0.26;
+// Baquet : assise, dossier incliné, flancs de maintien, appui-tête ; hauteur limitée sous le pavillon (maxTop)
+function bucketSeat(B, x, floor, z, race, maxTop) {
+  const hip = floor + 0.12;
+  const k = Math.min(1, Math.max(0.55, (maxTop - hip) / (race ? 0.74 : 0.86)));
+  const tilt = -0.26 - (1 - k) * 0.5;
   B.add('seat', rbox(0.46, 0.09, 0.48, 0.03, x, hip, z + 0.02));
-  const backY = hip + 0.36, backZ = z + 0.28;
-  B.add('seat', rbox(0.46, 0.66, 0.09, 0.03, x, backY, backZ, tilt));
+  const bh = 0.66 * k;
+  const backY = hip + bh * 0.55, backZ = z + 0.26 + (1 - k) * 0.1;
+  B.add('seat', rbox(0.46, bh, 0.09, 0.03, x, backY, backZ, tilt));
   for (const s of [-1, 1]) {
-    B.add('seat', rbox(0.08, race ? 0.62 : 0.5, 0.17, 0.03, x + s * 0.23, backY - 0.04, backZ - 0.06, tilt));
+    B.add('seat', rbox(0.08, bh * (race ? 0.94 : 0.76), 0.17, 0.03, x + s * 0.23, backY - 0.04 * k, backZ - 0.06, tilt));
     B.add('seat', rbox(0.08, 0.11, 0.44, 0.03, x + s * 0.22, hip + 0.045, z + 0.02));
   }
-  if (!race) B.add('seat', rbox(0.26, 0.17, 0.09, 0.03, x, backY + 0.42, backZ + 0.11, tilt));
+  if (!race) B.add('seat', rbox(0.25, 0.16 * k, 0.09, 0.03, x, backY + bh * 0.58, backZ + 0.11 + (1 - k) * 0.1, tilt));
 }
 
 // Construit l'intérieur : renvoie { buckets, wheelGeo, wheelPos } (le volant est animé à part)
@@ -112,8 +114,9 @@ export function buildInterior(shape, spec) {
   gauge.translate(f.driverX, f.belt - 0.02, zDash + 0.49);
   B.add('gauge', gauge);
   // sièges
-  bucketSeat(B, f.driverX, f.floor, f.zSeat, race);
-  if (!race && st.doors !== 0) bucketSeat(B, -f.driverX, f.floor, f.zSeat, false);
+  const maxTop = Math.min(f.roofY, shape.roof(shape.tOf(f.zSeat + 0.3))) - 0.07;
+  bucketSeat(B, f.driverX, f.floor, f.zSeat, race, maxTop);
+  if (!race && st.doors !== 0) bucketSeat(B, -f.driverX, f.floor, f.zSeat, false, maxTop);
   // banquette arrière (berlines, breaks, compactes)
   if (!race && (st.doors === 4 || st.rearB > 0.95) && zBack - f.zSeat > 0.9) {
     const zr = f.zSeat + 0.78;

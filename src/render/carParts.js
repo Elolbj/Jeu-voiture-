@@ -33,6 +33,25 @@ export function prep(g, col = [1, 1, 1]) {
   return g;
 }
 
+// Supprime les triangles d'une géométrie non indexée dont la normale (moyenne) vérifie test(nx, ny, nz)
+export function dropFaces(g, test) {
+  const keep = [];
+  const n = g.attributes.normal;
+  for (let i = 0; i < n.count; i += 3) {
+    const nx = n.getX(i) + n.getX(i + 1) + n.getX(i + 2), ny = n.getY(i) + n.getY(i + 1) + n.getY(i + 2), nz = n.getZ(i) + n.getZ(i + 1) + n.getZ(i + 2);
+    const l = Math.hypot(nx, ny, nz) || 1;
+    if (!test(nx / l, ny / l, nz / l)) keep.push(i);
+  }
+  for (const name of Object.keys(g.attributes)) {
+    const a = g.attributes[name], sz = a.itemSize;
+    const arr = new a.array.constructor(keep.length * 3 * sz);
+    keep.forEach((v, k) => arr.set(a.array.subarray(v * sz, (v + 3) * sz), k * 3 * sz));
+    g.setAttribute(name, new THREE.BufferAttribute(arr, sz));
+  }
+  g.clearGroups();
+  return g;
+}
+
 // UV métriques (projection selon l'axe dominant de la normale) : carbone, plastiques texturés
 export function metricUV(g, scale = 1) {
   const p = g.attributes.position, n = g.attributes.normal;
@@ -52,6 +71,8 @@ export class Buckets {
   constructor() { this.b = {}; }
   add(key, g, col) {
     if (!g) return;
+    // matériau noir à couleurs de sommet (garnitures) : teinte par défaut sombre
+    if (col === undefined) col = key === 'blk' ? [0.035, 0.036, 0.04] : [1, 1, 1];
     (this.b[key] || (this.b[key] = [])).push(prep(g, col));
   }
   merge() {
@@ -114,10 +135,17 @@ function setColor(g, col) {
 // Atlas de roue : pneu en haut (v ∈ [2/3, 1]), disque en bas à gauche (u ∈ [0, 0.25], v ∈ [0, 2/3])
 export const WHEEL_ATLAS = { tireV0: 2 / 3, discU1: 0.25 };
 
+// Rayon visible de la jante (rebord compris) : diamètre en pouces de la fiche, sinon proportion type
+export function rimRadius(wheel) {
+  const R = wheel.radius;
+  const rr = wheel.rimInch ? wheel.rimInch * 0.0127 + 0.014 : R * 0.69;
+  return clamp(rr, R * 0.56, R * 0.8);
+}
+
 // Pneu : profil en révolution (axe X, flanc extérieur vers +X). mirrorUV : roues gauches (texte lisible)
-export function tireGeometry(R, w, mirrorUV = false) {
-  return cachedGeo(`tire${R.toFixed(3)}|${w.toFixed(3)}|${mirrorUV}`, () => {
-    const rim = R * 0.69;
+export function tireGeometry(R, w, mirrorUV = false, rr = R * 0.69) {
+  return cachedGeo(`tire${R.toFixed(3)}|${w.toFixed(3)}|${rr.toFixed(3)}|${mirrorUV}`, () => {
+    const rim = rr;
     const sh = Math.min(0.03, w * 0.16);
     const hw = w / 2;
     // profil de l'extérieur (+y) vers l'intérieur (-y), x = rayon
@@ -149,7 +177,7 @@ export function tireGeometry(R, w, mirrorUV = false) {
     // ordre de l'intérieur vers l'extérieur : normales de révolution tournées vers l'extérieur
     pts.reverse();
     vk.reverse();
-    const seg = 40;
+    const seg = 34;
     const g = new THREE.LatheGeometry(pts, seg);
     // v = position dans l'atlas (bande du pneu)
     const uv = g.attributes.uv;
@@ -227,23 +255,23 @@ const RIM_DEF = {
   multi: { n: 15, hwIn: 0.0065, hwOut: 0.005, dish: 0.03 },
 };
 
-export function rimGeometry(R, w, style) {
+export function rimGeometry(R, w, style, rr = R * 0.69) {
   if (!RIM_DEF[style]) style = 'five';
-  return cachedGeo(`rim${R.toFixed(3)}|${w.toFixed(3)}|${style}`, () => {
+  return cachedGeo(`rim${R.toFixed(3)}|${w.toFixed(3)}|${rr.toFixed(3)}|${style}`, () => {
     const d = RIM_DEF[style];
-    const rr = R * 0.69;
     const rFace = rr * 0.965;
     const hub = rr * 0.24;
     const rin = d.classic ? rr * 0.4 : hub + 0.018, rout = rr * (d.classic ? 0.8 : 0.86);
     const shape = new THREE.Shape();
-    const nO = 48;
+    const nO = 40;
     for (let i = 0; i <= nO; i++) { const a = (i / nO) * Math.PI * 2; shape[i ? 'lineTo' : 'moveTo'](Math.cos(a) * rFace, Math.sin(a) * rFace); }
     const holes = [];
     const hw = (r) => lerp(d.hwIn ?? 0.01, d.hwOut ?? 0.01, clamp((r - rin) / (rout - rin), 0, 1));
     // fenêtre entre deux rayons (côtés parallèles aux rayons, coins adoucis)
     const windowPath = (aL, aR, r0, r1) => {
       const pts = [];
-      const nArc = 5, nSide = 2;
+      // finesse des contours selon le nombre de fenêtres (budget de triangles)
+      const nArc = d.mesh ? 2 : d.n >= 10 ? 3 : 4, nSide = d.mesh || d.n >= 14 ? 1 : 2;
       const angAt = (a, r, s) => a + s * Math.asin(clamp(hw(r) / r, 0, 0.9));
       for (let i = 0; i <= nArc; i++) {
         const u = i / nArc;
@@ -269,7 +297,7 @@ export function rimGeometry(R, w, style) {
       for (let i = 0; i < d.n; i++) {
         const a0 = i * sector;
         const pts = [];
-        const nn = 6, twist = 0.55, wA = sector * 0.42;
+        const nn = 4, twist = 0.55, wA = sector * 0.42;
         for (let k = 0; k <= nn; k++) { const u = k / nn, r = lerp(rin + 0.01, rout, u); pts.push([r, a0 + twist * u]); }
         for (let k = nn; k >= 0; k--) { const u = k / nn, r = lerp(rin + 0.01, rout, u); pts.push([r, a0 + twist * u + wA * (0.35 + 0.65 * u)]); }
         const p = new THREE.Path();
@@ -299,6 +327,7 @@ export function rimGeometry(R, w, style) {
     const depth = 0.016;
     const face = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.005, bevelSegments: 1, curveSegments: 4 });
     face.rotateY(Math.PI / 2); // face orientée vers +X
+    dropFaces(face, (nx) => nx < -0.9); // face arrière invisible (côté moyeu)
     const xFace = w * 0.36 - depth - 0.006;
     face.translate(xFace, 0, 0);
     // creusement : le centre recule vers l'intérieur, normales inclinées en conséquence
@@ -321,10 +350,10 @@ export function rimGeometry(R, w, style) {
     const lip = new THREE.LatheGeometry([
       new THREE.Vector2(rFace - 0.004, xl - 0.024), new THREE.Vector2(rFace - 0.002, xl - 0.004), new THREE.Vector2(rr + 0.002, xl + 0.003),
       new THREE.Vector2(rr + 0.011, xl - 0.002), new THREE.Vector2(rr + 0.012, xl - 0.014),
-    ].reverse(), 40);
+    ].reverse(), 36);
     lip.rotateZ(-Math.PI / 2);
     parts.push(prep(lip, [1.05, 1.05, 1.05]));
-    const barrel = new THREE.CylinderGeometry(rr * 0.985, rr * 0.985, w * 0.78, 28, 1, true);
+    const barrel = new THREE.CylinderGeometry(rr * 0.985, rr * 0.985, w * 0.78, 24, 1, true);
     barrel.rotateZ(Math.PI / 2);
     barrel.translate(-w * 0.03, 0, 0);
     parts.push(prep(flipGeometry(barrel), [0.22, 0.22, 0.23]));
@@ -368,12 +397,13 @@ export function buildWheel(spec, isLeft, mats) {
   const steer = new THREE.Group();
   const spin = new THREE.Group();
   steer.add(spin);
-  const tire = new THREE.Mesh(tireDiscGeometry(R, w, isLeft), mats.wheel);
+  const rr = rimRadius(spec.wheel);
+  const tire = new THREE.Mesh(tireDiscGeometry(R, w, isLeft, rr), mats.wheel);
   tire.castShadow = true;
   spin.add(tire);
-  const rim = new THREE.Mesh(rimGeometry(R, w, mats.rimStyle), mats.rim);
+  const rim = new THREE.Mesh(rimGeometry(R, w, mats.rimStyle, rr), mats.rim);
   spin.add(rim);
-  const discR = R * 0.69 * 0.84;
+  const discR = rr * 0.84;
   const cal = new THREE.Mesh(caliperGeometry(discR, w), mats.caliper);
   steer.add(cal);
   if (isLeft) {
@@ -385,12 +415,12 @@ export function buildWheel(spec, isLeft, mats) {
 }
 
 // Pneu + disque fusionnés (un seul matériau : atlas de roue)
-export function tireDiscGeometry(R, w, mirrorUV) {
-  return cachedGeo(`td${R.toFixed(3)}|${w.toFixed(3)}|${mirrorUV}`, () => {
-    const discR = R * 0.69 * 0.84;
+export function tireDiscGeometry(R, w, mirrorUV, rr = R * 0.69) {
+  return cachedGeo(`td${R.toFixed(3)}|${w.toFixed(3)}|${rr.toFixed(3)}|${mirrorUV}`, () => {
+    const discR = rr * 0.84;
     const disc = discGeometry(discR).clone();
     disc.translate(-w * 0.06, 0, 0);
-    return mergeGeometries([prep(tireGeometry(R, w, mirrorUV).clone()), disc], false);
+    return mergeGeometries([prep(tireGeometry(R, w, mirrorUV, rr).clone()), disc], false);
   });
 }
 
@@ -406,7 +436,7 @@ export function lowWheelsGeometry(spec, shape) {
     t.rotateZ(Math.PI / 2);
     t.translate(x, R, z);
     list.push(setColor(prep(t), [0.06, 0.06, 0.065]));
-    const f = new THREE.CircleGeometry(R * 0.66, 12);
+    const f = new THREE.CircleGeometry(rimRadius(spec.wheel) * 0.97, 12);
     f.rotateY(left ? -Math.PI / 2 : Math.PI / 2);
     f.translate(x + (left ? -1 : 1) * (w / 2 + 0.002), R, z);
     list.push(setColor(prep(f), [0.55, 0.56, 0.58]));
@@ -556,37 +586,48 @@ export function buildBodyParts(shape, spec, exhaust) {
     const fender = st.mirrors === 'fender';
     const race = st.mirrors === 'race' || st.race;
     for (const side of [-1, 1]) {
-      let x, y, z;
+      const s = race ? 0.82 : fender ? 0.62 : 1;
+      const hw = 0.088 * s, hh = 0.05 * s, df = 0.085 * s, db = 0.02 * s;
+      let x, y, z, xa = 0;
       if (fender) {
         const t = st.doors === 0 ? st.ws - 0.03 : st.ws * 0.72;
         const P = shape.profile(t, {});
         x = side * P.W * 0.86; y = P.topF + 0.06; z = P.z;
       } else {
-        const t = st.ws + 0.035;
+        // sur la porte, au pied du montant A
+        const t = st.ws + 0.04;
         const sec = shape.cabSection(t);
-        x = side * (sec.wc + 0.13); y = belt + 0.08; z = sec.z + 0.02;
+        xa = sec.wc;
+        x = side * (xa + 0.035 + hw); y = shape.belt + 0.07; z = sec.z + 0.03;
       }
-      const s = race ? 0.8 : fender ? 0.62 : 1;
-      const housing = new THREE.SphereGeometry(1, 16, 10);
+      // coque : superellipsoïde, nez arrondi vers l'avant, dos plat portant le miroir
+      const housing = new THREE.SphereGeometry(1, 18, 12);
       const hp = housing.attributes.position;
-      const se = (v) => Math.sign(v) * Math.pow(Math.abs(v), 0.55); // superellipsoïde : coque aux angles adoucis
+      const se = (v) => Math.sign(v) * Math.pow(Math.abs(v), 0.5);
       for (let i = 0; i < hp.count; i++) {
-        const hx = se(hp.getX(i)), hy = se(hp.getY(i));
-        let hz = se(hp.getZ(i));
-        if (hz > 0) hz *= 0.22; // dos plat (miroir vers l'arrière)
-        hp.setXYZ(i, hx * 0.105 * s * (1 - 0.15 * Math.max(0, -hz)), hy * 0.056 * s, hz * 0.075 * s);
+        const hx = se(hp.getX(i)), hy = se(hp.getY(i)), hz = hp.getZ(i);
+        const zz = hz > 0 ? se(hz) * db : hz * df;
+        hp.setXYZ(i, hx * hw * (1 - 0.12 * Math.max(0, -hz)), hy * hh * (1 - 0.1 * Math.max(0, -hz)), zz);
       }
       housing.computeVertexNormals();
       housing.translate(x, y, z);
       B.add(race ? 'carbon' : fender ? 'chrome' : 'paint', housing);
-      const glass = new THREE.CircleGeometry(1, 20);
-      glass.scale(0.088 * s, 0.048 * s, 1);
-      glass.translate(x, y, z + 0.0135 * s);
+      const glass = new THREE.CircleGeometry(1, 24);
+      const gp = glass.attributes.position;
+      for (let i = 0; i < gp.count; i++) gp.setXY(i, se(gp.getX(i)) * hw * 0.86, se(gp.getY(i)) * hh * 0.78);
+      glass.translate(x, y, z + db + 0.0015);
       B.add('mirror', glass);
       // pied
-      const foot = new THREE.BoxGeometry(fender ? 0.012 : 0.1, fender ? 0.06 : 0.022, 0.05);
-      foot.translate(fender ? x : x - side * 0.07, fender ? y - 0.04 : y - 0.035, z + 0.005);
-      B.add(fender ? 'chrome' : 'blk', foot);
+      if (fender) {
+        const foot = new THREE.CylinderGeometry(0.006, 0.009, 0.06, 6);
+        foot.translate(x, y - 0.045, z + 0.005);
+        B.add('chrome', foot);
+      } else {
+        const x0 = side * (xa - 0.01), x1 = x - side * hw * 0.6;
+        const foot = new THREE.BoxGeometry(Math.abs(x1 - x0), 0.022 * s, 0.05 * s);
+        foot.translate((x0 + x1) / 2, y - hh * 0.55, z + 0.01);
+        B.add('blk', foot);
+      }
     }
   }
   // --- Essuie-glaces (posés sur le pare-brise) ---
