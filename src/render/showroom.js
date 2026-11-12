@@ -1,79 +1,136 @@
-// Salle d'exposition 3D (menus, concession, garage) : sol brillant, éclairage studio,
-// plateau tournant.
+// Salle d'exposition 3D (menus, concession, garage, personnalisation) : studio à boîtes à lumière,
+// éclairage trois points, sol brillant avec reflet de la voiture, ombre de contact douce, plateau tournant.
 import * as THREE from 'three';
-import { CarModel } from './carModel.js';
-import { radialSprite } from '../world/textures.js';
+import { CarModel, carMaterials } from './carModel.js';
+import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { HorizontalBlurShader } from 'three/addons/shaders/HorizontalBlurShader.js';
+import { VerticalBlurShader } from 'three/addons/shaders/VerticalBlurShader.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+
+const BG = 0x0a0c10;
+
+// Fond : dégradé vertical sombre
+function backdrop() {
+  const c = document.createElement('canvas');
+  c.width = 8; c.height = 512;
+  const g = c.getContext('2d');
+  const gr = g.createLinearGradient(0, 0, 0, 512);
+  gr.addColorStop(0, '#07090d');
+  gr.addColorStop(0.45, '#141922');
+  gr.addColorStop(0.62, '#10141b');
+  gr.addColorStop(1, '#050608');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, 8, 512);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Sol : halo de lumière doux sous la voiture, assombri vers les bords du studio
+function floorTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(256, 256, 0, 256, 256, 256);
+  gr.addColorStop(0, '#272a31');
+  gr.addColorStop(0.06, '#1d2025');
+  gr.addColorStop(0.13, '#121418');
+  gr.addColorStop(0.3, '#0b0c0f');
+  gr.addColorStop(1, '#07080a');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, 512, 512);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Environnement de studio pour les reflets : coupole en dégradé + boîtes à lumière
+function studioEnvironment(gl) {
+  const studio = new THREE.Scene();
+  const dome = new THREE.SphereGeometry(30, 32, 16);
+  const col = [];
+  const p = dome.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i) / 30;
+    // sol sombre, bande d'horizon claire (cyclorama), voûte grise : reflets « studio » lisibles sur la caisse
+    let v;
+    if (y < -0.04) v = 0.02;
+    else if (y < 0.02) v = 0.02 + (y + 0.04) / 0.06 * 0.5;
+    else if (y < 0.3) v = 0.52 - (y - 0.02) / 0.28 * 0.38;
+    else v = 0.14 - (y - 0.3) * 0.08;
+    col.push(v, v * 1.01, v * 1.04);
+  }
+  dome.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  studio.add(new THREE.Mesh(dome, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+  const panel = (w, h, x, y, z, rx, ry, intensity, color = 0xffffff) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity), side: THREE.DoubleSide }));
+    m.position.set(x, y, z);
+    m.rotation.set(rx, ry, 0);
+    studio.add(m);
+  };
+  panel(16, 5, 0, 13, 0, Math.PI / 2, 0, 2.6); // plafonnier
+  panel(1.6, 9, -15, 5, -3, 0, Math.PI / 2, 2.4); // bandeau gauche
+  panel(1.6, 9, 15, 5, 3, 0, -Math.PI / 2, 1.8, 0xd8e6ff); // bandeau droit
+  panel(14, 2.2, 0, 4.5, -19, 0, 0, 1.3); // fond
+  panel(10, 2, 0, 3.2, 19, 0, Math.PI, 0.9, 0xffe9d2); // face
+  const pmrem = new THREE.PMREMGenerator(gl);
+  const env = pmrem.fromScene(studio, 0.035).texture;
+  pmrem.dispose();
+  return env;
+}
 
 export class Showroom {
   constructor(renderer) {
     this.renderer = renderer;
     const scene = new THREE.Scene();
     this.scene = scene;
-    scene.background = new THREE.Color(0x0b0d12);
-    // Environnement de studio : pièce sombre et grandes boîtes à lumière (reflets nets sur la carrosserie)
-    const pmrem = new THREE.PMREMGenerator(renderer.gl);
-    const studio = new THREE.Scene();
-    studio.add(new THREE.Mesh(new THREE.BoxGeometry(60, 30, 60), new THREE.MeshBasicMaterial({ color: 0x0c0e12, side: THREE.BackSide })));
-    const panel = (w, h, x, y, z, rx, ry, intensity, color = 0xffffff) => {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity), side: THREE.DoubleSide }));
-      m.position.set(x, y, z);
-      m.rotation.set(rx, ry, 0);
-      studio.add(m);
-    };
-    panel(14, 6, 0, 13, 0, Math.PI / 2, 0, 3.2);
-    panel(2, 10, -16, 5, 0, 0, Math.PI / 2, 2.2);
-    panel(2, 10, 16, 5, 0, 0, -Math.PI / 2, 1.6, 0xcfe0ff);
-    panel(12, 3, 0, 4, -20, 0, 0, 1.4);
-    panel(8, 2.4, 0, 3, 20, 0, Math.PI, 1.1, 0xffe6cc);
-    const floorRefl = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshBasicMaterial({ color: 0x15171c }));
-    floorRefl.rotation.x = -Math.PI / 2;
-    floorRefl.position.y = -0.5;
-    studio.add(floorRefl);
-    const env = pmrem.fromScene(studio, 0.02).texture;
-    scene.environment = env;
+    scene.background = backdrop();
+    scene.environment = studioEnvironment(renderer.gl);
     scene.environmentIntensity = 1.0;
-    scene.fog = new THREE.Fog(0x0b0d12, 14, 34);
+    scene.fog = new THREE.Fog(BG, 13, 36);
 
-    // Sol réfléchissant
-    const floorMat = new THREE.MeshPhysicalMaterial({ color: 0x0d0f13, roughness: 0.5, metalness: 0.0, clearcoat: 0.6, clearcoatRoughness: 0.25, envMapIntensity: 0.35 });
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(40, 64), floorMat);
+    // Sol brillant (semi-transparent : laisse voir le reflet de la voiture placé dessous)
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(40, 96), new THREE.MeshStandardMaterial({
+      color: 0xffffff, map: floorTexture(), roughness: 0.58, metalness: 0.0, transparent: true, opacity: 0.88, envMapIntensity: 0.45, depthWrite: false,
+    }));
     floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
+    floor.renderOrder = -1;
     scene.add(floor);
-    // Plateau tournant
-    const tt = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.7, 0.08, 96), new THREE.MeshPhysicalMaterial({ color: 0x1a1c21, roughness: 0.4, metalness: 0.5, clearcoat: 0.7, envMapIntensity: 0.5 }));
-    tt.position.y = 0.04;
-    tt.receiveShadow = true;
-    scene.add(tt);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(3.66, 0.02, 8, 128), new THREE.MeshBasicMaterial({ color: 0x5fa8ff }));
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = 0.085;
-    scene.add(ring);
+    this.floor = floor;
+    // Plateau tournant (liseré lumineux) et voiture
     this.turntable = new THREE.Group();
-    this.turntable.position.y = 0.08;
     scene.add(this.turntable);
-    // Halo au sol
-    const halo = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.MeshBasicMaterial({ map: radialSprite('halo', 'rgba(90,140,255,0.22)', 'rgba(90,140,255,0)'), transparent: true, depthWrite: false }));
-    halo.rotation.x = -Math.PI / 2;
-    halo.position.y = 0.01;
-    scene.add(halo);
+    const disc = new THREE.Mesh(new THREE.RingGeometry(3.5, 3.56, 128), new THREE.MeshBasicMaterial({ color: 0x3f86e0, transparent: true, opacity: 0.85, depthWrite: false }));
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.y = 0.003;
+    this.turntable.add(disc);
+    const plate = new THREE.Mesh(new THREE.CircleGeometry(3.5, 96), new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.45, metalness: 0.2, transparent: true, opacity: 0.35, depthWrite: false }));
+    plate.rotation.x = -Math.PI / 2;
+    plate.position.y = 0.002;
+    this.turntable.add(plate);
 
-    // Éclairage studio
-    scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x15161a, 0.35));
-    const key = new THREE.SpotLight(0xffffff, 42, 30, 0.75, 0.8, 1.4);
-    key.position.set(5, 9, 5);
-    key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
-    key.shadow.bias = -0.0002;
-    key.shadow.normalBias = 0.02;
+    // Éclairage trois points en boîtes à lumière (reflets allongés et doux, aucun point spéculaire) :
+    // principale au plafond, bandeau latéral, contre-jour ; ciel faible. Pas de lumière ponctuelle ni
+    // directionnelle : l'ancrage au sol vient de l'ombre de contact précalculée.
+    scene.add(new THREE.HemisphereLight(0xe2ebff, 0x0c0d10, 0.4));
+    RectAreaLightUniformsLib.init();
+    const key = new THREE.RectAreaLight(0xfff6ec, 2.4, 7, 3.2);
+    key.position.set(2.2, 6.2, 2.6);
+    key.lookAt(0, 0.3, 0);
     scene.add(key);
-    scene.add(key.target);
-    const rim = new THREE.SpotLight(0x8fb8ff, 45, 30, 0.7, 0.8, 1.4);
-    rim.position.set(-6, 6, -6);
-    scene.add(rim);
-    const fill = new THREE.PointLight(0xffe2c0, 14, 20, 1.8);
-    fill.position.set(-5, 3, 6);
-    scene.add(fill);
+    const strip = new THREE.RectAreaLight(0xe8f0ff, 2.2, 1.2, 4.5);
+    strip.position.set(-5.5, 2.2, 1.5);
+    strip.lookAt(0, 0.6, 0);
+    scene.add(strip);
+    const back = new THREE.RectAreaLight(0xd2e2ff, 2.0, 6, 1.6);
+    back.position.set(-3.5, 3.2, -5.5);
+    back.lookAt(0, 0.5, 0);
+    scene.add(back);
+    const front = new THREE.RectAreaLight(0xffe9d6, 1.2, 4, 1.4);
+    front.position.set(4.5, 1.6, -4);
+    front.lookAt(0, 0.5, 0);
+    scene.add(front);
+
     this.camera = new THREE.PerspectiveCamera(32, 16 / 9, 0.1, 200);
     this.camAngle = 0.7;
     this.camDist = 9;
@@ -81,7 +138,9 @@ export class Showroom {
     this.targetY = 0.6;
     this.autoRotate = true;
     this.car = null;
+    this.refl = null;
     this.offsetX = 0;
+    this.shadowPlane = null;
   }
 
   setCar(spec, color, opts = {}) {
@@ -89,12 +148,103 @@ export class Showroom {
       this.turntable.remove(this.car.root);
       this.car.dispose();
     }
-    this.car = new CarModel(spec, { color, ...opts });
+    this.car = new CarModel(spec, { color, liveryRes: 2048, showroom: true, ...opts });
     this.car.root.position.y = spec.cgHeight - (spec.lowered || 0);
     this.car.setStatic(0.25);
     this.turntable.add(this.car.root);
+    this.bakeContactShadow(spec);
+    this.updateReflection();
     this.camDist = 5.2 + spec.dims.length * 0.9;
     return this.car;
+  }
+
+  // Aperçu en direct d'une personnalisation (contrat C)
+  applyCustom(custom) {
+    if (!this.car) return;
+    this.car.applyCustom(custom);
+    this.updateReflection();
+  }
+
+  // Reflet : copie de la voiture retournée sous le sol (géométries et matériaux partagés)
+  updateReflection() {
+    if (this.refl) this.turntable.remove(this.refl);
+    this.refl = null;
+    if (!this.car) return;
+    const r = this.car.root.clone();
+    r.scale.y = -1;
+    r.position.y = -this.car.root.position.y;
+    // passages de roues et intérieur invisibles dans le reflet (évite les aplats noirs sous la caisse)
+    const well = carMaterials().well;
+    // tout le reflet est dessiné avant le sol translucide (vitres comprises), donc atténué par lui
+    r.traverse((o) => {
+      o.castShadow = false; o.receiveShadow = false;
+      o.renderOrder = -2;
+      if (o.material === well) o.visible = false;
+    });
+    this.turntable.add(r);
+    this.refl = r;
+  }
+
+  // Ombre de contact : hauteur des surfaces vues depuis le sol, floutée, posée sous la voiture
+  bakeContactShadow(spec) {
+    const gl = this.renderer.gl;
+    const W = spec.dims.width + 0.9, L = spec.dims.length + 0.9;
+    const rw = 256, rh = Math.round(256 * L / W);
+    if (!this._cs) {
+      const mk = () => new THREE.WebGLRenderTarget(rw, rh, { type: THREE.HalfFloatType });
+      this._cs = {
+        a: mk(), b: mk(),
+        mat: new THREE.ShaderMaterial({
+          uniforms: { uMax: { value: 0.55 } },
+          vertexShader: 'varying float vH; void main(){ vec4 wp = modelMatrix * vec4(position,1.0); vH = wp.y; gl_Position = projectionMatrix * viewMatrix * wp; }',
+          fragmentShader: 'uniform float uMax; varying float vH; void main(){ float k = 1.0 - clamp(vH / uMax, 0.0, 1.0); gl_FragColor = vec4(0.0, 0.0, 0.0, k * k * 0.92); }',
+          side: THREE.DoubleSide,
+        }),
+        h: new FullScreenQuad(new THREE.ShaderMaterial(HorizontalBlurShader)),
+        v: new FullScreenQuad(new THREE.ShaderMaterial(VerticalBlurShader)),
+      };
+    }
+    const cs = this._cs;
+    cs.a.setSize(rw, rh); cs.b.setSize(rw, rh);
+    const cam = new THREE.OrthographicCamera(-W / 2, W / 2, L / 2, -L / 2, 0, 1.5);
+    cam.up.set(0, 0, 1);
+    cam.position.set(0, -0.01, 0);
+    cam.lookAt(0, 1, 0);
+    const tmp = new THREE.Scene();
+    const car = this.car.root;
+    const parent = car.parent;
+    tmp.add(car);
+    tmp.overrideMaterial = cs.mat;
+    const prevRT = gl.getRenderTarget(), prevClear = gl.getClearColor(new THREE.Color()), prevAlpha = gl.getClearAlpha();
+    const prevShadow = gl.shadowMap.autoUpdate;
+    gl.shadowMap.autoUpdate = false;
+    gl.setClearColor(0x000000, 0);
+    gl.setRenderTarget(cs.a);
+    gl.clear();
+    gl.render(tmp, cam);
+    // flou en deux passes aller-retour
+    for (let k = 0; k < 3; k++) {
+      cs.h.material.uniforms.tDiffuse.value = cs.a.texture;
+      cs.h.material.uniforms.h.value = (1.6 + k) / rw;
+      gl.setRenderTarget(cs.b); gl.clear(); cs.h.render(gl);
+      cs.v.material.uniforms.tDiffuse.value = cs.b.texture;
+      cs.v.material.uniforms.v.value = (1.6 + k) / rh;
+      gl.setRenderTarget(cs.a); gl.clear(); cs.v.render(gl);
+    }
+    gl.setRenderTarget(prevRT);
+    gl.setClearColor(prevClear, prevAlpha);
+    gl.shadowMap.autoUpdate = prevShadow;
+    tmp.overrideMaterial = null;
+    parent.add(car);
+    if (!this.shadowPlane) {
+      this.shadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, depthWrite: false, map: cs.a.texture }));
+      this.shadowPlane.rotation.x = -Math.PI / 2;
+      this.shadowPlane.renderOrder = 1;
+      this.turntable.add(this.shadowPlane);
+    }
+    this.shadowPlane.material.map = cs.a.texture;
+    this.shadowPlane.scale.set(W, -L, 1);
+    this.shadowPlane.position.y = 0.004;
   }
 
   update(dt) {
@@ -108,8 +258,8 @@ export class Showroom {
     if (this.renderer.bloomOwner !== 'showroom') {
       // réglages propres au studio (la course les redéfinit)
       this.renderer.bloomOwner = 'showroom';
-      this.renderer.setBloom(0.16, 3.2, 0.4);
-      this.renderer.gl.toneMappingExposure = 0.9;
+      this.renderer.setBloom(0.14, 3.2, 0.4);
+      this.renderer.gl.toneMappingExposure = 0.95;
     }
     this.renderer.render(this.scene, this.camera);
   }
