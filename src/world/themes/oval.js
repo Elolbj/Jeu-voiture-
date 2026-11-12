@@ -19,6 +19,8 @@ export function buildOval(sc) {
   bigStand(sc, iStart, outside, 820);
   // tribunes simples à l'entrée des virages 1 et 3
   for (const u of [0.3, 0.8]) sc.grandstand(t.indexAt(t.startS + u * t.length), outside, 180, 14);
+  // tribune de la ligne opposée, plus basse
+  sc.grandstand(t.indexAt(t.startS + 0.55 * t.length), outside, 300, 12);
 
   // grillage de protection (≈ 6 m) sur tout le mur extérieur
   catchFence(sc, { sides: [outside], fromH: 1.05, toH: 6.5, postStep: 5 });
@@ -47,6 +49,8 @@ export function buildOval(sc) {
   }
   sc.scatter(f, Math.round(900 * q), ['liveoak', 'pine', 'palm'], { clump: 260, threshold: 0.05, minClear: 70, filter: (x, y, z) => !L || sc.terrain.lakeDepth(x, z) === 0 });
   sc.scatter(f, Math.round(500 * q), ['palm', 'liveoak'], { clump: 200, threshold: -0.2, minClear: 35, nearTrack: 60 });
+  // ceinture de pinèdes et de chênes au-delà des parkings (ligne d'horizon boisée)
+  sc.scatter(f, Math.round(2600 * q), ['pine', 'pine', 'liveoak', 'palm'], { clump: 150, threshold: -0.3, minClear: 60, filter: (x, y, z) => { const o = sc.terrain.outside(x, z); return o > 170 && o < 480; } });
   f.build(450, true, 300);
   parking(sc, outside);
   blimp(sc);

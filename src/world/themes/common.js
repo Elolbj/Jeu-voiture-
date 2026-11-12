@@ -153,6 +153,126 @@ export function textAtlas(key, entries, { cellW = 256, cellH = 96, font = 'bold 
   });
 }
 
+// Postes de commissaires : cabine blanche sur pilotis, bandeau orange et mât à drapeau,
+// tous les `step` m en alternant les côtés ; skip(i, side) écarte un emplacement.
+export function marshalPosts(sc, { step = 320, offset = 4, skip = null } = {}) {
+  const t = sc.track;
+  const white = sc.cachedMat('marshalWhite', () => new THREE.MeshStandardMaterial({ color: 0xeef0f2, roughness: 0.6 }));
+  const orange = sc.cachedMat('marshalOrange', () => new THREE.MeshStandardMaterial({ color: 0xff6a10, roughness: 0.5, emissive: 0xff4a00, emissiveIntensity: sc.night ? 0.6 : 0.05 }));
+  const dark = sc.cachedMat('marshalDark', () => new THREE.MeshStandardMaterial({ color: 0x24272c, roughness: 0.5, metalness: 0.4 }));
+  const cabin = new THREE.BoxGeometry(2.2, 2.1, 2.2);
+  const band = new THREE.BoxGeometry(2.26, 0.35, 2.26);
+  const roof = new THREE.BoxGeometry(2.9, 0.18, 2.9);
+  const leg = new THREE.BoxGeometry(0.16, 1.5, 0.16);
+  const pole = new THREE.CylinderGeometry(0.04, 0.04, 3.2, 4);
+  const flag = new THREE.BoxGeometry(0.03, 0.62, 0.9);
+  const win = new THREE.BoxGeometry(0.06, 0.7, 1.7);
+  const n = Math.max(1, Math.round(step / t.spacing));
+  const f = {};
+  let k = 0;
+  for (let i = Math.floor(n / 2); i < t.count; i += n, k++) {
+    const side = k % 2 ? 1 : -1;
+    if (skip && skip(i, side)) continue;
+    const wall = side > 0 ? t.wallR[i] : t.wallL[i];
+    frameAt(t, i, side * (wall + offset), f);
+    if (sc.clearance(f.x, f.z) < offset - 1.5) continue;
+    const y = Math.max(sc.groundAt(f.x, f.z), surfaceY(t, i, side * wall) - 0.3);
+    const P = (a, b) => [f.x + f.rx * a * side + f.dx * b, f.z + f.rz * a * side + f.dz * b];
+    for (const [a, b] of [[-0.9, -0.9], [-0.9, 0.9], [0.9, -0.9], [0.9, 0.9]]) {
+      const [x, z] = P(a, b);
+      sc.bin.add('marshalDark', dark, leg, mat(x, y + 0.75, z, f.rot));
+    }
+    sc.bin.add('marshalWhite', white, cabin, mat(f.x, y + 2.55, f.z, f.rot));
+    sc.bin.add('marshalOrange', orange, band, mat(f.x, y + 3.3, f.z, f.rot));
+    sc.bin.add('marshalWhite', white, roof, mat(f.x, y + 3.7, f.z, f.rot));
+    // vitre côté piste
+    const [wx, wz] = P(-1.12, 0);
+    sc.bin.add('marshalDark', dark, win, mat(wx, y + 2.75, wz, f.rot));
+    const [px, pz] = P(-1.2, 1.2);
+    sc.bin.add('marshalDark', dark, pole, mat(px, y + 4.6, pz));
+    sc.bin.add('marshalOrange', orange, flag, mat(px + f.dx * 0.45, y + 5.85, pz + f.dz * 0.45, f.rot));
+  }
+  sc.bin.noShadow('marshalDark');
+}
+
+// Écran géant sur pylônes, tourné vers la piste et vers les voitures qui arrivent
+export function bigScreen(sc, i, side, { w = 16, h = 9, lift = 7, back = 14 } = {}) {
+  const t = sc.track;
+  const wall = side > 0 ? t.wallR[i] : t.wallL[i];
+  const f = frameAt(t, i, side * (wall + back), {});
+  if (sc.clearance(f.x, f.z) < back - 3) return false;
+  const y = sc.groundAt(f.x, f.z);
+  // normale de l'écran : vers la piste, inclinée vers l'arrivée des voitures
+  let nx = -side * f.rx - f.dx * 0.7, nz = -side * f.rz - f.dz * 0.7;
+  const nl = Math.hypot(nx, nz);
+  nx /= nl; nz /= nl;
+  const rot = Math.atan2(nx, nz);
+  const tex = screenTexture();
+  const scr = sc.cachedMat('bigScreen', () => new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: sc.night ? 1.3 : 0.85, roughness: 0.4 }));
+  const dark = sc.cachedMat('marshalDark', () => new THREE.MeshStandardMaterial({ color: 0x24272c, roughness: 0.5, metalness: 0.4 }));
+  sc.bin.add('bigScreen', scr, new THREE.PlaneGeometry(w, h), mat(f.x + nx * 0.42, y + lift + h / 2, f.z + nz * 0.42, rot));
+  sc.bin.add('marshalDark', dark, new THREE.BoxGeometry(w + 0.8, h + 0.8, 0.8), mat(f.x, y + lift + h / 2, f.z, rot));
+  const c = Math.cos(rot), s = Math.sin(rot);
+  for (const o of [-w * 0.3, w * 0.3]) sc.bin.add('marshalDark', dark, new THREE.BoxGeometry(0.7, lift, 0.7), mat(f.x + c * o, y + lift / 2, f.z - s * o, rot));
+  return true;
+}
+
+// Image de l'écran géant : retransmission stylisée (piste, voitures, classement, logo)
+function screenTexture() {
+  return cached('bigScreen', () => {
+    const W = 512, H = 288;
+    const c = makeCanvas(W, H);
+    const ctx = c.getContext('2d');
+    let g = ctx.createLinearGradient(0, 0, 0, H * 0.45);
+    g.addColorStop(0, '#3b7fd0');
+    g.addColorStop(1, '#bcd8f0');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#5a7a3a';
+    ctx.fillRect(0, H * 0.45, W, H * 0.55);
+    // piste en perspective
+    ctx.fillStyle = '#3c3f44';
+    ctx.beginPath();
+    ctx.moveTo(W * 0.47, H * 0.45); ctx.lineTo(W * 0.53, H * 0.45); ctx.lineTo(W * 0.95, H); ctx.lineTo(W * 0.05, H);
+    ctx.fill();
+    ctx.strokeStyle = '#f2f2f2';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.47, H * 0.45); ctx.lineTo(W * 0.08, H); ctx.moveTo(W * 0.53, H * 0.45); ctx.lineTo(W * 0.92, H);
+    ctx.stroke();
+    // voitures
+    for (const [x, y, s, col] of [[0.44, 0.78, 1, '#d01c2a'], [0.58, 0.62, 0.62, '#1c5ad0']]) {
+      const cw = 90 * s, ch = 34 * s;
+      ctx.fillStyle = col;
+      ctx.fillRect(W * x - cw / 2, H * y - ch / 2, cw, ch);
+      ctx.fillStyle = '#111';
+      ctx.fillRect(W * x - cw * 0.3, H * y - ch * 0.75, cw * 0.6, ch * 0.4);
+      ctx.fillRect(W * x - cw * 0.45, H * y + ch * 0.35, cw * 0.18, ch * 0.3);
+      ctx.fillRect(W * x + cw * 0.27, H * y + ch * 0.35, cw * 0.18, ch * 0.3);
+    }
+    // classement
+    ctx.fillStyle = 'rgba(10,14,22,0.85)';
+    ctx.fillRect(14, 40, 120, 150);
+    ctx.font = 'bold 20px Arial, Helvetica, sans-serif';
+    ['1  KAZE', '2  VEGA', '3  ORSO', '4  LUMA', '5  ARGO'].forEach((txt, k) => {
+      ctx.fillStyle = k === 0 ? '#ffd23b' : '#ffffff';
+      ctx.fillText(txt, 24, 66 + k * 28);
+    });
+    // bandeaux
+    ctx.fillStyle = '#d0102a';
+    ctx.fillRect(14, 12, 104, 24);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 18px Arial, Helvetica, sans-serif';
+    ctx.fillText('EN DIRECT', 22, 30);
+    ctx.fillStyle = 'rgba(10,14,22,0.85)';
+    ctx.fillRect(W - 210, H - 44, 196, 32);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px Arial, Helvetica, sans-serif';
+    ctx.fillText('TRAJECTOIRE', W - 194, H - 20);
+    return canvasTexture(c, { repeat: false });
+  });
+}
+
 // Plan rectangulaire (w × h) dont les UV couvrent la case `r` d'un atlas
 export function atlasPlane(w, h, r, doubleSided = false) {
   const g = new THREE.PlaneGeometry(w, h);

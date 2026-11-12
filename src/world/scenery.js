@@ -414,7 +414,8 @@ export class Scenery {
     this.buildNeons(placed);
   }
 
-  buildStreetLights() {
+  // Lampadaires en quinconce et flaques de lumière (step : écart sur un même côté / 2, R : rayon)
+  buildStreetLights({ step: stepM = 26, R = 9, color = 'rgba(255,200,130,0.55)', key = 'pool' } = {}) {
     const t = this.track;
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x3a3d42, metalness: 0.6, roughness: 0.5 });
     const lampMat = new THREE.MeshStandardMaterial({ color: 0xffe6c0, emissive: 0xffd9a0, emissiveIntensity: 6 });
@@ -422,7 +423,7 @@ export class Scenery {
     const arm = new THREE.BoxGeometry(0.12, 0.12, 2.6);
     const head = new THREE.BoxGeometry(0.5, 0.15, 0.9);
     const poolPos = [], poolUV = [], poolIdx = [];
-    const step = Math.max(1, Math.round(26 / t.spacing));
+    const step = Math.max(1, Math.round(stepM / t.spacing));
     let n = 0;
     for (let i = 0; i < t.count; i += step) {
       for (const side of [-1, 1]) {
@@ -441,7 +442,6 @@ export class Scenery {
         // flaque lumineuse au sol
         const cx = x - rx * side * 4.5, cz = z - rz * side * 4.5;
         const cy = surfaceY(t, i, side * Math.max(0, wall - 4.5)) + 0.04;
-        const R = 9;
         poolPos.push(cx - R, cy, cz - R, cx + R, cy, cz - R, cx + R, cy, cz + R, cx - R, cy, cz + R);
         poolUV.push(0, 0, 1, 0, 1, 1, 0, 1);
         poolIdx.push(n, n + 2, n + 1, n, n + 3, n + 2);
@@ -453,7 +453,7 @@ export class Scenery {
     g.setAttribute('uv', new THREE.Float32BufferAttribute(poolUV, 2));
     g.setIndex(poolIdx);
     const poolMat = new THREE.MeshBasicMaterial({
-      map: TX.radialSprite('pool', 'rgba(255,200,130,0.55)', 'rgba(255,170,90,0)', 128),
+      map: TX.radialSprite(key, color, color.replace(/[\d.]+\)$/, '0)'), 128),
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,

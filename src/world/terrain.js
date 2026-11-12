@@ -122,7 +122,7 @@ export class Terrain {
         const out = this.outside(x, z);
         const u = x * 0.8 + z * 0.6, w = -x * 0.6 + z * 0.8;
         const dunes = N.ridged(u / 520 + 5, w / 190 + 2, 3);
-        const amp = 3 + 34 * smoothstep(40, 700, out);
+        const amp = 5 + 32 * smoothstep(0, 450, out);
         return base + amp * dunes + 1.2 * N.fbm(x / 70, z / 70, 2) - 1;
       }
       case 'forest':

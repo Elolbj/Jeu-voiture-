@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { InstancedForest } from '../vegetation.js';
 import { surfaceY } from '../trackMesh.js';
 import * as TX from '../textures.js';
-import { boxWorldUV, mat, frameAt, infieldSide, glassFacade, floodlightPoles, lightPools, catchFence, canvasTexture, makeCanvas } from './common.js';
+import { boxWorldUV, mat, frameAt, infieldSide, glassFacade, floodlightPoles, lightPools, catchFence, canvasTexture, makeCanvas, marshalPosts, bigScreen } from './common.js';
 
 export function buildDesert(sc) {
   const t = sc.track;
@@ -19,8 +19,8 @@ export function buildDesert(sc) {
   // broussailles éparses dans le sable
   sc.scatter(f, Math.round(1500 * q), ['shrub'], { clump: 140, threshold: -0.2, minClear: 4, maxSlope: 0.6 });
   // palmeraies (bosquets denses)
-  for (let k = 0; k < 16; k++) {
-    const p = sc.findSpot(25, 260, 30);
+  for (let k = 0; k < 26; k++) {
+    const p = sc.findSpot(22, k < 12 ? 90 : 260, 30);
     if (!p) continue;
     const n = 8 + Math.floor(r() * 14);
     for (let j = 0; j < n; j++) {
@@ -35,7 +35,8 @@ export function buildDesert(sc) {
   for (let i = 0; i < t.count; i += 6) {
     const ds = Math.abs(t.sArr[i] - t.startS);
     const nearStart = Math.min(ds, t.length - ds) < 420;
-    if (!nearStart && r() < 0.8) continue;
+    // ailleurs : alignements par tronçons (oasis le long des lignes droites)
+    if (!nearStart && (Math.sin(t.sArr[i] / 170 + 0.7) < 0.35 || r() < 0.25)) continue;
     for (const side of [-1, 1]) {
       const wall = side > 0 ? t.wallR[i] : t.wallL[i];
       frameAt(t, i, side * (wall + 7 + r() * 3), fr);
@@ -50,17 +51,25 @@ export function buildDesert(sc) {
   sc.pitBuilding(iStart, infield, 280);
   sailCanopy(sc, iStart, -infield, 240);
   controlTower(sc, t.idx(iStart + Math.round(170 / t.spacing)), infield);
-  // tribunes de virage (extérieur des freinages principaux)
-  let placed = 0;
-  for (let i = 0; i < t.count && placed < 4; i += 3) {
-    if (Math.abs(t.kappa[i]) > 1 / 45 && r() < 0.05) {
-      const ds = Math.abs(t.sArr[i] - t.startS);
-      if (Math.min(ds, t.length - ds) < 300) continue;
-      sc.grandstand(i, t.kappa[i] > 0 ? -1 : 1, 70, 10);
-      placed++;
-      i += 150;
-    }
+  // tribunes de virage : extérieur des quatre virages les plus serrés (loin des stands)
+  const corners = [];
+  for (let i = 0; i < t.count; i++) {
+    const k = Math.abs(t.kappa[i]);
+    if (k < 1 / 60) continue;
+    const ds = Math.abs(t.sArr[i] - t.startS);
+    if (Math.min(ds, t.length - ds) < 300) continue;
+    const near = corners.find((c) => Math.abs(t.sArr[c] - t.sArr[i]) < 250);
+    if (near === undefined) corners.push(i);
+    else if (k > Math.abs(t.kappa[near])) corners[corners.indexOf(near)] = i;
   }
+  corners.sort((a, b) => Math.abs(t.kappa[b]) - Math.abs(t.kappa[a]));
+  for (const i of corners.slice(0, 4)) {
+    // tribune décalée vers l'entrée du virage (zone de freinage)
+    const j = t.idx(i - Math.round(40 / t.spacing));
+    sc.grandstand(j, t.kappa[i] > 0 ? -1 : 1, 90, 10);
+  }
+  // écrans géants face aux tribunes de virage
+  for (const i of corners.slice(0, 2)) bigScreen(sc, t.idx(i + Math.round(30 / t.spacing)), t.kappa[i] > 0 ? 1 : -1, { back: 18 });
 
   // ---------------------------------------------------------------- Hôtel enjambant la piste
   hotel(sc);
@@ -74,6 +83,7 @@ export function buildDesert(sc) {
   const pools = floodlightPoles(sc, { step: 66, height: 17, offset: 3, lit });
   if (sc.night) lightPools(sc.group, pools, 'rgba(255,214,160,0.5)', 'poolDesert');
   catchFence(sc, { sides: [-infield], fromH: 0.8, toH: 3.6, filter: (i) => { const d = Math.abs(t.sArr[i] - t.startS); return Math.min(d, t.length - d) < 300; } });
+  marshalPosts(sc, { step: 300, offset: 5, skip: (i) => { const d = Math.abs(t.sArr[i] - t.startS); return Math.min(d, t.length - d) < 200; } });
   sc.buildBillboards();
 }
 

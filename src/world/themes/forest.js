@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { InstancedForest } from '../vegetation.js';
 import { surfaceY } from '../trackMesh.js';
 import * as TX from '../textures.js';
-import { mat, matR, frameAt, infieldSide, textAtlas, atlasPlane, peopleTexture, concreteSlabs, boxWorldUV } from './common.js';
+import { mat, matR, frameAt, infieldSide, textAtlas, atlasPlane, peopleTexture, concreteSlabs, boxWorldUV, marshalPosts } from './common.js';
 import { rad } from '../../core/utils.js';
 
 // Noms (fictifs) des lieux-dits, à la fraction du tour où se trouve le virage
@@ -82,8 +82,9 @@ export function buildForest(sc) {
   // ---------------------------------------------------------------- Campings et spectateurs
   for (const c of clearings) campsite(sc, t.indexAt(c.s), c.side, c.len);
 
-  // ---------------------------------------------------------------- Panneaux
+  // ---------------------------------------------------------------- Panneaux, postes de commissaires
   signs(sc);
+  marshalPosts(sc, { step: 380, offset: 4.5, skip: (i) => { const d = Math.abs(t.sArr[i] - t.startS); return Math.min(d, L - d) < 220; } });
 
   // ---------------------------------------------------------------- Passerelles piétonnes
   const bridges = [0.07, 0.47, 0.73];

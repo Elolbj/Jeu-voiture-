@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { InstancedForest } from '../vegetation.js';
 import { surfaceY } from '../trackMesh.js';
 import * as TX from '../textures.js';
-import { boxWorldUV, mat, frameAt, infieldSide, snowDetail } from './common.js';
+import { boxWorldUV, mat, frameAt, infieldSide, snowDetail, marshalPosts } from './common.js';
 
 export function buildSnow(sc) {
   const t = sc.track;
@@ -45,6 +45,7 @@ export function buildSnow(sc) {
   sc.grandstand(iStart, -infield, 70, 8);
   sc.pitBuilding(iStart, infield, 160);
   sc.buildBillboards();
+  marshalPosts(sc, { step: 420, offset: 5.5, skip: (i) => { const d = Math.abs(t.sArr[i] - t.startS); return Math.min(d, t.length - d) < 150; } });
 
   // ---------------------------------------------------------------- Chalets
   for (let k = 0; k < 16; k++) {

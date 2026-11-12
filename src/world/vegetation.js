@@ -105,7 +105,7 @@ export function treeGeometry(kind, seed = 1) {
     let x = 0, y = 0;
     const lean = 0.06 + r() * 0.1;
     for (let i = 0; i < segs; i++) {
-      const seg = new THREE.CylinderGeometry(0.2, 0.24, h / segs + 0.05, 6);
+      const seg = new THREE.CylinderGeometry(0.2, 0.24, h / segs + 0.05, 6, 1, true);
       seg.rotateZ(-lean * (i / segs) * 2);
       seg.translate(x, y + h / segs / 2, 0);
       parts.push(colorize(seg, [0.42, 0.34, 0.24], 0.12, r));
@@ -236,7 +236,7 @@ export function treeGeometry(kind, seed = 1) {
     let x = 0, y = 0;
     const lean = (r() - 0.5) * 0.12;
     for (let i = 0; i < segs; i++) {
-      const seg = new THREE.CylinderGeometry(0.27 - i * 0.008, 0.3 - i * 0.008, h / segs + 0.04, 7);
+      const seg = new THREE.CylinderGeometry(0.27 - i * 0.008, 0.3 - i * 0.008, h / segs + 0.04, 7, 1, true);
       seg.rotateZ(-lean);
       seg.translate(x, y + h / segs / 2, 0);
       const l = i % 2 ? 0.95 : 0.78;
@@ -247,11 +247,11 @@ export function treeGeometry(kind, seed = 1) {
     const heart = new THREE.IcosahedronGeometry(0.55, 0);
     heart.translate(x, y + 0.1, 0);
     parts.push(colorize(heart, [0.35, 0.33, 0.16], 0.1, r));
-    const fronds = 15;
+    const fronds = 13;
     for (let i = 0; i < fronds; i++) {
       const a = (i / fronds) * Math.PI * 2 + r() * 0.25;
       const up = i % 3 === 0 ? 0.9 : 0.35 + r() * 0.35; // palmes hautes et retombantes
-      parts.push(frond(x, y + 0.2, a, 4.2 + r() * 1.2, up, r));
+      parts.push(frond(x, y + 0.2, a, 4.2 + r() * 1.2, up, r, 4));
     }
   } else if (kind === 'shrub') {
     // Broussaille du désert : touffe basse et sèche
@@ -294,8 +294,7 @@ const smooth01 = (t) => {
 };
 
 // Palme arquée (bande effilée en V, visible des deux côtés) partant de (x0, y0, 0) vers l'angle a
-function frond(x0, y0, a, len, up, r) {
-  const N = 6;
+function frond(x0, y0, a, len, up, r, N = 6) {
   const pos = [], col = [], pts = [];
   for (let k = 0; k <= N; k++) {
     const t = k / N;
@@ -352,6 +351,14 @@ export function treeLowGeometry(kind, seed = 1) {
     const t = new THREE.CylinderGeometry(0.2, 0.3, 4, 4, 1, true);
     t.translate(0, 1.5, 0);
     parts.push(colorize(t, kind === 'birch' ? [0.8, 0.8, 0.76] : TRUNK, 0.05, r));
+  } else if (kind === 'palm' || kind === 'datepalm') {
+    // stipe à 5 pans et couronne de 6 palmes en V (deux faces)
+    const date = kind === 'datepalm';
+    const h = date ? 10.5 : 9;
+    const t = new THREE.CylinderGeometry(date ? 0.24 : 0.18, date ? 0.3 : 0.24, h, 5, 1, true);
+    t.translate(0, h / 2, 0);
+    parts.push(colorize(t, date ? [0.4, 0.31, 0.21] : [0.42, 0.34, 0.24], 0.05, r));
+    for (let i = 0; i < 6; i++) parts.push(frond(0, h, (i / 6) * Math.PI * 2 + r() * 0.3, date ? 4.8 : 4.2, i % 2 ? 0.8 : 0.4, r, 2));
   } else {
     return null;
   }
@@ -453,7 +460,7 @@ export class InstancedForest {
   }
 }
 
-const LOW_KINDS = new Set(['pine', 'spruce', 'snowspruce', 'cypress', 'deciduous', 'umbrella', 'birch', 'liveoak', 'beech']);
+const LOW_KINDS = new Set(['pine', 'spruce', 'snowspruce', 'cypress', 'deciduous', 'umbrella', 'birch', 'liveoak', 'beech', 'palm', 'datepalm']);
 const SMALL_KINDS = new Set(['rock', 'snowrock', 'bush', 'shrub', 'hedge', 'vine']);
 
 // Masque les tuiles lointaines (au-delà du brouillard utile) et choisit le niveau de détail
