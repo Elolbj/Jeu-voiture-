@@ -235,14 +235,16 @@ export function paintLivery(layout, opts, res = 1024) {
   // portes
   for (const d of L.doors) {
     const yb = L.sill + 0.045;
-    sideLine([[d.z0, L.belt - 0.005], [d.z0, yb + 0.03], [d.z0 + 0.03, yb], [d.z1 - 0.03, yb], [d.z1, yb + 0.03], [d.z1, L.belt - 0.005]]);
+    sideLine([[d.z0, Math.max(at(d.z0).top, L.belt) - 0.005], [d.z0, yb + 0.03], [d.z0 + 0.03, yb], [d.z1 - 0.03, yb], [d.z1, yb + 0.03], [d.z1, Math.max(at(d.z1).top, L.belt) - 0.005]]);
   }
   // jonctions bouclier / ailes
   if (!L.race) {
-    const zA = L.zAxleF - L.archR * 0.92, zB = zF + 0.24;
-    sideLine([[zB, at(zB).topF - 0.06], [lerp(zA, zB, 0.5), lerp(L.archTopF, at(zB).topF - 0.06, 0.55)], [zA, L.archTopF - 0.05]]);
-    const zC = L.zAxleR + L.archR * 0.92, zD = zR - 0.24;
-    sideLine([[zD, at(zD).topF - 0.07], [lerp(zC, zD, 0.5), lerp(L.archTopR, at(zD).topF - 0.07, 0.55)], [zC, L.archTopR - 0.05]]);
+    // avant : du coin inférieur du phare vers le haut du passage de roue ; arrière : arête supérieure du bouclier
+    const zA = L.zAxleF - L.archR * 0.8, zB = zF + 0.16;
+    const yB = Math.min(at(zB).topF - 0.1, at(zB).ys - 0.02);
+    sideLine([[zB, yB], [lerp(zA, zB, 0.4), lerp(L.archTopF - 0.03, yB, 0.5)], [zA, L.archTopF - 0.03]]);
+    const zC = L.zAxleR + L.archR * 0.85, yC = Math.min(L.archTopR - 0.02, at(zR - 0.1).topF - 0.14);
+    sideLine([[zC, L.archTopR - 0.06], [zC + 0.05, yC], [zR - 0.02, yC]]);
   }
   // trappe à carburant (flanc droit)
   if (L.fuel) {

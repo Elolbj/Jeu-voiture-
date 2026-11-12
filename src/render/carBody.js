@@ -24,6 +24,14 @@ function keyInterp(keys, t) {
 const SEC_LOW = [1 / 7, 2 / 7, 4 / 7];
 const SEC_UP = [2 / 7, 2 / 7, 3 / 7];
 
+// Rampe linéaire de 0 à 1 terminée par un congé parabolique (pente nulle en u = 1) sur la fraction k
+function fillet(u, k) {
+  const s = 1 / (1 - k / 2);
+  if (u <= 1 - k) return s * u;
+  const v = u - (1 - k);
+  return s * (1 - k) + s * v - (s * v * v) / (2 * k);
+}
+
 // Arrondi en superellipse : 0 à l'extrémité, 1 à la distance R
 function roundEase(d, R, p) {
   if (d >= R) return 1;
@@ -67,10 +75,14 @@ export class BodyShape {
       [st.ws * 0.6, lerp(st.nose, st.hood, st.hoodK1 ?? 0.86) * H],
       [st.ws, st.hood * H],
     ];
+    // ceinture de caisse montante vers l'arrière (beltR : hauteur au pied de la lunette)
+    this.tB0 = st.ws + 0.03;
+    this.tB1 = Math.max(this.tB0 + 0.01, st.rearB - 0.02);
+    this.beltR = (st.beltR ?? st.belt) * H;
     this.topKeys = [
       [st.ws, st.hood * H],
-      [st.ws + 0.03, st.belt * H],
-      [st.rearB - 0.02, st.belt * H],
+      [this.tB0, st.belt * H],
+      [this.tB1, this.beltR],
       [st.rearB, st.deck * H],
       [1, st.tail * H],
     ];
@@ -88,7 +100,7 @@ export class BodyShape {
     const st = this.st;
     const z = this.zFront + t * this.L;
     const dF = t * this.L, dR = (1 - t) * this.L;
-    let top = t <= st.ws ? sampleKeys(this.hoodKeys, t) : keyInterp(this.topKeys, t);
+    let top = t <= st.ws ? sampleKeys(this.hoodKeys, t) : t >= this.tB0 && t <= this.tB1 ? this.beltAt(t) : keyInterp(this.topKeys, t);
     let topF = top;
     if (this.fenderNeed > top) {
       const R = this.archR;
@@ -121,6 +133,12 @@ export class BodyShape {
     ys = clamp(ys, bot + 0.03 * e, topF - 0.025 * e);
     out.z = z; out.top = top; out.topF = topF; out.bot = bot; out.W = W; out.ys = ys; out.e = e;
     return out;
+  }
+
+  // Hauteur de la ceinture de caisse (bas des vitres latérales) en t
+  beltAt(t) {
+    const u = clamp((t - this.tB0) / (this.tB1 - this.tB0), 0, 1);
+    return this.belt + (this.beltR - this.belt) * Math.pow(u, this.st.beltPow ?? 1.25);
   }
 
   top(t) { return this.profile(t).top; }
@@ -220,7 +238,7 @@ export class BodyShape {
     const dL = (ys - bot - rB) * 0.6, dU = (yu - ys) * 0.5;
     const yCenter = top + crown - this.valley(t) * e;
     c = {
-      e, z: P.z,
+      e, z: P.z, P,
       // segments : [type, points…] ; type 'q' = Bézier quadratique, 't' = dessus (fonction de x)
       seg: [
         ['q', [0, bot], [(xr - rB) * 0.5, bot], [xr - rB, bot]],
@@ -239,8 +257,9 @@ export class BodyShape {
   // Point de la section (côté droit) pour θ ∈ [-π/2, π/2] : moitié basse (θ < 0) du dessous à la ligne de
   // caractère, moitié haute jusqu'au centre du dessus. Les arcs occupent des fractions fixes de chaque moitié.
   sectionPoint(t, theta, out) {
-    this.profile(t, out);
     const c = this.sectionCurve(t);
+    const P = c.P;
+    out.z = P.z; out.top = P.top; out.topF = P.topF; out.bot = P.bot; out.W = P.W; out.ys = P.ys; out.e = P.e;
     const lower = theta < 0;
     const f = lower ? (theta + Math.PI / 2) / (Math.PI / 2) : theta / (Math.PI / 2);
     const W = lower ? SEC_LOW : SEC_UP;
@@ -264,14 +283,15 @@ export class BodyShape {
     return out;
   }
 
-  // Hauteur du toit (habitacle) en t
+  // Hauteur du toit (habitacle) en t : pare-brise et lunette quasi plans, raccordés au pavillon par un congé
+  // (wsFillet / rwFillet : part de la longueur arrondie), pavillon légèrement bombé.
   roof(t) {
     const st = this.st, H = this.H;
     const belt = st.belt * H, roofH = st.roof * H;
     if (t <= st.ws) return belt;
     if (t < st.roofF) {
       const u = (t - st.ws) / (st.roofF - st.ws);
-      return belt + (roofH - belt) * (1 - Math.pow(1 - u, 1.7));
+      return belt + (roofH - belt) * fillet(u, st.wsFillet ?? 0.4);
     }
     if (t <= st.roofB) {
       const u = (t - st.roofF) / (st.roofB - st.roofF);
@@ -280,7 +300,8 @@ export class BodyShape {
     if (t < st.rearB) {
       const u = (t - st.roofB) / (st.rearB - st.roofB);
       const end = st.deck * H;
-      const k = st.rearB > 0.95 ? Math.pow(u, st.rearPow ?? 1.5) : 1 - Math.pow(1 - u, 1.4);
+      // hayon (bicorps) : courbe qui se redresse vers le bas ; tricorps / fastback : lunette droite
+      const k = st.rearB > 0.95 ? Math.pow(u, st.rearPow ?? 1.5) : 1 - fillet(1 - u, st.rwFillet ?? 0.45);
       return roofH * 0.975 + (end - roofH * 0.975) * k;
     }
     return st.deck * H;
@@ -295,7 +316,7 @@ export class BodyShape {
     const key = Math.round(t * 1e6);
     const c = this._secCache.get(key);
     if (c) return c;
-    const st = this.st, belt = this.belt;
+    const st = this.st, belt = this.beltAt(t);
     const z = this.zOf(t);
     const W = this.halfWidth(t, z);
     const h = Math.max(0, this.roof(t) - belt);
@@ -490,7 +511,10 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
   patch(ringL, 'left');
   // triangles retournés ou écrasés par la découpe : supprimés ; normales pondérées par l'aire, par sommet logique
   const keep = [];
-  const acc = new Map();
+  let maxKey = 0;
+  for (let v = 0; v < keys.length; v++) if (keys[v] > maxKey) maxKey = keys[v];
+  const acc = new Float64Array((maxKey + 1) * 3);
+  const used = new Uint8Array(maxKey + 1);
   const nrm = (P, a, b, c) => {
     const ux = P[b * 3] - P[a * 3], uy = P[b * 3 + 1] - P[a * 3 + 1], uz = P[b * 3 + 2] - P[a * 3 + 2];
     const vx = P[c * 3] - P[a * 3], vy = P[c * 3 + 1] - P[a * 3 + 1], vz = P[c * 3 + 2] - P[a * 3 + 2];
@@ -505,17 +529,17 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
     if (n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2] <= 0 && Math.hypot(n0[0], n0[1], n0[2]) > 1e-9) continue;
     keep.push(a, b, c);
     for (const v of [a, b, c]) {
-      let n = acc.get(keys[v]);
-      if (!n) { n = [0, 0, 0]; acc.set(keys[v], n); }
-      n[0] += n1[0]; n[1] += n1[1]; n[2] += n1[2];
+      const o = keys[v] * 3;
+      used[keys[v]] = 1;
+      acc[o] += n1[0]; acc[o + 1] += n1[1]; acc[o + 2] += n1[2];
     }
   }
   const nor = new Float32Array(pos.length);
   for (let v = 0; v < keys.length; v++) {
-    const n = acc.get(keys[v]);
-    if (!n) { nor[v * 3 + 1] = 1; continue; }
-    const l = Math.hypot(n[0], n[1], n[2]) || 1;
-    nor[v * 3] = n[0] / l; nor[v * 3 + 1] = n[1] / l; nor[v * 3 + 2] = n[2] / l;
+    const o = keys[v] * 3;
+    if (!used[keys[v]]) { nor[v * 3 + 1] = 1; continue; }
+    const l = Math.hypot(acc[o], acc[o + 1], acc[o + 2]) || 1;
+    nor[v * 3] = acc[o] / l; nor[v * 3 + 1] = acc[o + 1] / l; nor[v * 3 + 2] = acc[o + 2] / l;
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));

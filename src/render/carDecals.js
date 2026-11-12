@@ -202,9 +202,9 @@ export const GRILLE = {
     ['vent', 0, 0.22, 0.3, 0.035, { n: 6, center: true }],
   ],
   single: [
-    ['house', 0, 0.45, 0.38, 0.18, { center: true, pts: [[-0.75, 1], [0.75, 1], [1, 0.2], [0.72, -1], [-0.72, -1], [-1, 0.2]], seg: 48 }],
-    ['grille', 0, 0.45, 0.35, 0.16, { center: true, off: L1, pts: [[-0.75, 1], [0.75, 1], [1, 0.2], [0.72, -1], [-0.72, -1], [-1, 0.2]], seg: 48 }],
-    ['vent', 0.74, 0.3, 0.12, 0.08, { n: 3, rot: 0.2 }],
+    ['chrome', 0, 0.5, 0.3, 0.15, { center: true, pts: [[-0.78, 1], [0.78, 1], [1, 0.25], [0.74, -1], [-0.74, -1], [-1, 0.25]], seg: 48, hole: 0.93 }],
+    ['grille', 0, 0.5, 0.285, 0.14, { center: true, off: L1, pts: [[-0.78, 1], [0.78, 1], [1, 0.25], [0.74, -1], [-0.74, -1], [-1, 0.25]], seg: 48 }],
+    ['vent', 0.74, 0.3, 0.13, 0.075, { n: 3, rot: 0.2 }],
   ],
   aero: [
     ['grille', 0, 0.3, 0.3, 0.06, { n: 4, center: true }],
@@ -213,7 +213,7 @@ export const GRILLE = {
   ],
 };
 // hauteur du logo (fraction de la face avant) selon la calandre
-const BADGE_FY = { bar: 0.74, slot: 0.8, mouth: 0.62, kidney: 0.9, triple: 0.56, super: 0.62, race: 0.66, oval: 0.42, wide: 0.6, single: 0.45, aero: 0.55 };
+const BADGE_FY = { bar: 0.74, slot: 0.8, mouth: 0.62, kidney: 0.9, triple: 0.56, super: 0.62, race: 0.66, oval: 0.42, wide: 0.6, single: 0.53, aero: 0.55 };
 
 // Disposition des échappements : [{ x, y, rx, ry, side }]
 export function exhaustLayout(shape, spec) {
@@ -293,13 +293,13 @@ export function buildDecals(shape, spec, bodyGeo, lod = 0) {
   };
   // --- optiques avant ---
   if (st.lights === 'frog') {
-    // phares ronds sur le dessus des ailes (regard vers l'avant et le haut)
-    const dir = new THREE.Vector3(0, -0.5, 0.866);
+    // phares ronds à l'avant des ailes (regard vers l'avant et un peu vers le haut)
+    const dir = new THREE.Vector3(0, -0.42, 0.907).normalize();
     const a2 = Y.clone().addScaledVector(dir, -Y.dot(dir)).normalize();
-    const zc = zF + 0.3;
-    const yc = shape.profile((zc - zF) / shape.L).topF + 0.3;
+    const zc = zF + 0.2;
+    const yc = shape.profile((zc - zF) / shape.L).topF - 0.06;
     for (const [key, , , a, b, o] of HEAD.frog) {
-      const c = new THREE.Vector3(W * 0.66, yc, zc).addScaledVector(dir, -0.6);
+      const c = new THREE.Vector3(W * 0.66, yc, zc).addScaledVector(dir, -1.2);
       const r = make(key, { c, a1: X, a2, dir, a, b, ...o });
       if (r) put(r[0], r[1], true);
     }
@@ -328,7 +328,7 @@ export function buildDecals(shape, spec, bodyGeo, lod = 0) {
     }
     // plaques d'immatriculation (voitures de route) + support noir
     if (!st.race) {
-      const fyP = st.grille === 'bar' || st.grille === 'kidney' || st.grille === 'slot' ? 0.5 : st.grille === 'wide' ? 0.36 : st.grille === 'single' ? 0.16 : 0.3;
+      const fyP = st.grille === 'bar' || st.grille === 'kidney' || st.grille === 'slot' ? 0.5 : st.grille === 'wide' ? 0.36 : st.grille === 'single' ? 0.4 : 0.3;
       place([['blk', 0, fyP, 0.27, 0.064, { n: 10, center: true, off: 0.006 }], ['plate', 0, fyP, 0.255, 0.054, { n: 12, center: true, off: 0.0085 }]], 'front');
       place([['blk', 0, 0.44, 0.27, 0.064, { n: 10, center: true, off: 0.0045 }], ['plate', 0, 0.44, 0.255, 0.054, { n: 12, center: true, off: 0.0065 }]], 'rear');
     }

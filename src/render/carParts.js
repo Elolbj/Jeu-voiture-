@@ -177,7 +177,7 @@ export function tireGeometry(R, w, mirrorUV = false, rr = R * 0.69) {
     // ordre de l'intérieur vers l'extérieur : normales de révolution tournées vers l'extérieur
     pts.reverse();
     vk.reverse();
-    const seg = 34;
+    const seg = 30;
     const g = new THREE.LatheGeometry(pts, seg);
     // v = position dans l'atlas (bande du pneu)
     const uv = g.attributes.uv;

@@ -64,7 +64,7 @@ export function buildInterior(shape, spec) {
   const B = new Buckets();
   const race = !!st.race;
   const sec = shape.cabSection(f.tSeat);
-  const wc = sec.wc - 0.03;
+  let wc = sec.wc - 0.03;
   const zWS = shape.zOf(st.ws);
   const zBack = Math.min(shape.zOf(st.rearB) - 0.05, f.zSeat + (st.doors === 4 || st.rearB > 0.95 ? 1.15 : 0.62));
   // baignoire : plancher, contre-portes, tablier, cloison arrière (faces tournées vers l'intérieur)
@@ -80,6 +80,15 @@ export function buildInterior(shape, spec) {
   while (zDash < f.wheel.z - 0.62 && shape.roof(shape.tOf(zDash + 0.36)) - f.belt < 0.09) zDash += 0.01;
   zDash = Math.min(zDash, f.wheel.z - 0.6);
   const z0 = zDash, z1 = zBack;
+  // largeur intérieure : jamais au-delà de la caisse ni de l'habitacle (épaules arrondies, coupés étroits)
+  let wIn = wc;
+  for (let i = 0; i <= 6; i++) {
+    const t = shape.tOf(lerp(z0, z1, i / 6));
+    const xs = shape.xAt(t, f.belt - 0.02);
+    if (xs > 0) wIn = Math.min(wIn, xs - 0.035);
+    if (t > st.ws && t < st.rearB) wIn = Math.min(wIn, shape.cabSection(t).wc - 0.03);
+  }
+  wc = Math.max(0.3, wIn);
   B.add('interior', quad([-wc, yb, z0], [-wc, yb, z1], [wc, yb, z1], [wc, yb, z0]), [0.5, 0.5, 0.5]);
   B.add('interior', quad([wc, yb, z0], [wc, yb, z1], [wc, yt, z1], [wc, yt, z0]));
   B.add('interior', quad([-wc, yb, z1], [-wc, yb, z0], [-wc, yt, z0], [-wc, yt, z1]));

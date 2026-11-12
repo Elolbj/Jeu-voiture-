@@ -1,7 +1,7 @@
 // Salle d'exposition 3D (menus, concession, garage, personnalisation) : studio à boîtes à lumière,
 // éclairage trois points, sol brillant avec reflet de la voiture, ombre de contact douce, plateau tournant.
 import * as THREE from 'three';
-import { CarModel } from './carModel.js';
+import { CarModel, carMaterials } from './carModel.js';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { HorizontalBlurShader } from 'three/addons/shaders/HorizontalBlurShader.js';
 import { VerticalBlurShader } from 'three/addons/shaders/VerticalBlurShader.js';
@@ -155,7 +155,12 @@ export class Showroom {
     const r = this.car.root.clone();
     r.scale.y = -1;
     r.position.y = -this.car.root.position.y;
-    r.traverse((o) => { o.castShadow = false; o.receiveShadow = false; });
+    // passages de roues et intérieur invisibles dans le reflet (évite les aplats noirs sous la caisse)
+    const well = carMaterials().well;
+    r.traverse((o) => {
+      o.castShadow = false; o.receiveShadow = false;
+      if (o.material === well) o.visible = false;
+    });
     this.turntable.add(r);
     this.refl = r;
   }
