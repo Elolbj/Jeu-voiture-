@@ -56,6 +56,8 @@ export function carMaterials() {
     fabric: shared('fabric', () => new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.96, metalness: 0 })),
     lowWheel: shared('lowWheel', () => new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.6, metalness: 0.3 })),
     visor: shared('visor', () => new THREE.MeshStandardMaterial({ color: 0x0b0d10, roughness: 0.05, metalness: 0.7 })),
+    // vitrage lointain : opaque (pas d'habitacle au niveau de détail 1, pas de tri des transparents)
+    glassFar: shared('glassFar', () => new THREE.MeshStandardMaterial({ color: 0x0c1015, roughness: 0.06, metalness: 0.4, envMapIntensity: 1.3 })),
   };
 }
 
@@ -422,7 +424,7 @@ export class CarModel {
     // --- Niveau de détail lointain ---
     add(this.lod1, C.bodyLow, this.paint, true);
     add(this.lod1, C.cabLow.paint, this.paint, true);
-    this.glassMeshes.push(add(this.lod1, C.cabLow.glass, glassMaterial(0.35), false, 2));
+    add(this.lod1, C.cabLow.glass, M.glassFar);
     add(this.lod1, C.cabLow.fabric, M.fabric);
     for (const [k, g] of Object.entries(C.decalsLow.geos)) add(this.lod1, g, decalMat(k), false, 1);
     add(this.lod1, C.lowWheels, M.lowWheel, true);

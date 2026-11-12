@@ -32,7 +32,7 @@ export const STYLES = {
   hatch: {
     overF: 0.58, nose: 0.52, hood: 0.64, belt: 0.67, deck: 0.71, tail: 0.69,
     ws: 0.3, roofF: 0.49, roofB: 0.82, rearB: 0.955, cabW: 0.92, roofW: 0.76, clear: 0.15, rearPow: 1.5, nU: 6,
-    noseR: 0.1, noseRB: 0.12, noseY: 0.55, nosePow: 3.2, cornerF: 0.22, w0F: 0.74,
+    noseR: 0.1, noseRB: 0.08, noseY: 0.6, nosePow: 3.2, cornerF: 0.22, w0F: 0.74,
     tailR: 0.06, tailRB: 0.12, tailY: 0.42, tailPow: 3.2, cornerR: 0.18, w0R: 0.84,
     lights: 'round', tailLights: 'tall', grille: 'bar', spoiler: 'lip', doors: 2, shoulder: 0.76,
     antenna: 'whip', skirt: null,
@@ -43,7 +43,7 @@ export const STYLES = {
   hatch2: {
     overF: 0.58, nose: 0.5, hood: 0.625, belt: 0.66, deck: 0.7, tail: 0.66,
     ws: 0.27, roofF: 0.47, roofB: 0.76, rearB: 0.96, cabW: 0.92, roofW: 0.75, clear: 0.14, rearPow: 1.35, nU: 5.5,
-    noseR: 0.12, noseRB: 0.12, noseY: 0.55, nosePow: 3, cornerF: 0.26, w0F: 0.68,
+    noseR: 0.12, noseRB: 0.09, noseY: 0.58, nosePow: 3, cornerF: 0.26, w0F: 0.68,
     tailR: 0.06, tailRB: 0.12, tailY: 0.42, tailPow: 3.2, cornerR: 0.2, w0R: 0.8,
     lights: 'slim', tailLights: 'tall', grille: 'slot', spoiler: 'roof', doors: 2, shoulder: 0.78,
     skirt: 'body', lip: 'black',
@@ -71,9 +71,9 @@ export const STYLES = {
     beltR: 0.72,
   },
   sedan: {
-    overF: 0.52, nose: 0.52, hood: 0.64, belt: 0.65, deck: 0.71, tail: 0.69,
+    overF: 0.49, nose: 0.55, hood: 0.65, belt: 0.65, deck: 0.71, tail: 0.69,
     ws: 0.345, roofF: 0.5, roofB: 0.72, rearB: 0.83, cabW: 0.91, roofW: 0.73, clear: 0.15, nU: 5.5,
-    noseR: 0.12, noseRB: 0.12, noseY: 0.5, nosePow: 3, cornerF: 0.28, w0F: 0.74,
+    noseR: 0.1, noseRB: 0.075, noseY: 0.6, nosePow: 3, cornerF: 0.22, w0F: 0.8,
     tailR: 0.08, tailRB: 0.14, tailY: 0.45, tailPow: 3, cornerR: 0.22, w0R: 0.8,
     lights: 'slim', tailLights: 'block', grille: 'mouth', spoiler: 'wing', doors: 4, shoulder: 0.8,
     skirt: 'body', antenna: 'fin', hoodScoop: true,
@@ -83,7 +83,7 @@ export const STYLES = {
   sedan2: {
     overF: 0.5, nose: 0.5, hood: 0.65, belt: 0.67, deck: 0.73, tail: 0.71,
     ws: 0.37, roofF: 0.52, roofB: 0.7, rearB: 0.82, cabW: 0.9, roofW: 0.72, clear: 0.13, nU: 5,
-    noseR: 0.14, noseRB: 0.14, noseY: 0.48, nosePow: 2.8, cornerF: 0.34, w0F: 0.66,
+    noseR: 0.14, noseRB: 0.1, noseY: 0.55, nosePow: 2.8, cornerF: 0.34, w0F: 0.66,
     tailR: 0.14, tailRB: 0.14, tailY: 0.45, tailPow: 2.6, cornerR: 0.3, w0R: 0.74,
     lights: 'twin', tailLights: 'block', grille: 'kidney', spoiler: 'lip', doors: 2, shoulder: 0.8, carbonRoof: true,
     lip: 'carbon', skirt: 'body', diffuser: 'small', exhaust: 'quad', flare: 0.035,
@@ -93,7 +93,7 @@ export const STYLES = {
   gtcoupe: {
     overF: 0.52, nose: 0.5, hood: 0.66, belt: 0.68, deck: 0.75, tail: 0.74,
     ws: 0.35, roofF: 0.5, roofB: 0.69, rearB: 0.83, cabW: 0.9, roofW: 0.72, clear: 0.13, nU: 6,
-    noseR: 0.1, noseRB: 0.12, noseY: 0.5, nosePow: 3.2, cornerF: 0.25, w0F: 0.78,
+    noseR: 0.1, noseRB: 0.09, noseY: 0.56, nosePow: 3.2, cornerF: 0.25, w0F: 0.78,
     tailR: 0.08, tailRB: 0.12, tailY: 0.45, tailPow: 3.2, cornerR: 0.22, w0R: 0.8,
     lights: 'slim', tailLights: 'quad', grille: 'mouth', spoiler: 'wing', doors: 2, shoulder: 0.82,
     skirt: 'body', lip: 'black', exhaust: 'twin',
@@ -205,9 +205,9 @@ export const STYLES = {
   },
   // Break sportif : pavillon long, hayon presque vertical, barres de toit, ailes élargies.
   wagon: {
-    overF: 0.55, nose: 0.5, hood: 0.62, belt: 0.665, deck: 0.71, tail: 0.69,
+    overF: 0.55, nose: 0.53, hood: 0.62, belt: 0.665, deck: 0.71, tail: 0.69,
     ws: 0.33, roofF: 0.48, roofB: 0.88, rearB: 0.975, cabW: 0.91, roofW: 0.74, clear: 0.13, rearPow: 1.1,
-    noseR: 0.15, noseRB: 0.12, noseY: 0.5, nosePow: 3, cornerF: 0.3, w0F: 0.74,
+    noseR: 0.15, noseRB: 0.08, noseY: 0.6, nosePow: 3, cornerF: 0.3, w0F: 0.74,
     tailR: 0.07, tailRB: 0.12, tailY: 0.45, tailPow: 3.2, cornerR: 0.22, w0R: 0.82,
     lights: 'led', tailLights: 'wide', grille: 'single', spoiler: 'roof', doors: 4, shoulder: 0.8,
     flare: 0.05, fenderGap: 0.055, roofRails: true, exhaust: 'oval', antenna: 'fin', diffuser: 'small',

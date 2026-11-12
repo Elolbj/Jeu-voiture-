@@ -434,10 +434,10 @@ export function fixNormals(g) {
 // ---------------------------------------------------------------------------
 export function buildBodyGeometry(shape, atlas, lod = 0) {
   const ts = [];
-  const N = lod ? 26 : 62;
+  const N = lod ? 26 : 56;
   for (let i = 0; i <= N; i++) ts.push(0.5 - 0.5 * Math.cos((i / N) * Math.PI));
   // stations serrées autour des passages de roues (découpe nette)
-  const step = (lod ? 0.07 : 0.028) / shape.L;
+  const step = (lod ? 0.07 : 0.031) / shape.L;
   for (const ta of [shape.tAxleF, shape.tAxleR]) {
     const dt = (shape.archR * 1.12) / shape.L;
     for (let t = ta - dt; t <= ta + dt + 1e-9; t += step) if (t > 0 && t < 1) ts.push(t);

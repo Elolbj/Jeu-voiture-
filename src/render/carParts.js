@@ -325,7 +325,9 @@ export function rimGeometry(R, w, style, rr = R * 0.69) {
     }
     shape.holes = holes;
     const depth = 0.016;
-    const face = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.005, bevelSegments: 1, curveSegments: 4 });
+    // voiles très ajourés (nid d'abeille, multibranches, turbine) : sans chanfrein (budget de triangles)
+    const dense = d.mesh || d.turbine || d.n >= 14;
+    const face = new THREE.ExtrudeGeometry(shape, { depth: dense ? depth + 0.005 : depth, bevelEnabled: !dense, bevelThickness: 0.006, bevelSize: 0.005, bevelSegments: 1, curveSegments: 4 });
     face.rotateY(Math.PI / 2); // face orientée vers +X
     dropFaces(face, (nx) => nx < -0.9); // face arrière invisible (côté moyeu)
     const xFace = w * 0.36 - depth - 0.006;
