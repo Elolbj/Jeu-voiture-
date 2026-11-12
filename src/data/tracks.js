@@ -175,7 +175,7 @@ export const TRACKS = [
     id: 'dunes',
     name: 'Circuit des Dunes',
     location: 'Désert de Liwa, Émirats arabes unis',
-    desc: "Un tracé de Grand Prix flambant neuf posé au milieu des dunes. Deux lignes droites interminables, une épingle sous l'hôtel illuminé et un final technique au coucher du soleil.",
+    desc: "Un tracé de Grand Prix flambant neuf posé au milieu des dunes. Deux lignes droites interminables, une épingle serrée et un final technique sous l'hôtel illuminé, au coucher du soleil.",
     theme: 'desert',
     time: 'sunset',
     width: 14,
@@ -202,6 +202,7 @@ export const TRACKS = [
       [112, 336, 42],
     ],
     elevation: [[0, 0], [0.2, 2], [0.4, 5], [0.6, 3], [0.8, 1]],
+    decor: { hotel: [-370, 426] },
     laps: 3,
   },
   {
@@ -286,6 +287,7 @@ export const TRACKS = [
       [0,  330,  25],
     ],
     elevation: [[0, 0], [0.25, 3], [0.5, 6], [0.75, 2]],
+    decor: { viaduct: [[680, -900], [680, 450]] },
     laps: 4,
   },
   {

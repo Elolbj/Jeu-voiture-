@@ -1,10 +1,30 @@
 // Terrain : relief naturel selon le thème, raccordé au circuit (remblais / déblais),
 // couleurs par sommet (herbe, champs, roche, neige, sable), décor lointain.
+// Le maillage est découpé en blocs pour l'élimination hors champ.
 import * as THREE from 'three';
 import { Noise2D } from '../core/noise.js';
 import { clamp, lerp, smoothstep } from '../core/utils.js';
 import { terrainDetail } from './textures.js';
 import { surfaceY } from './trackMesh.js';
+import { sandDetail, snowDetail } from './themes/common.js';
+
+// Réglages par thème : marge autour du circuit, largeur de raccord, relief du décor lointain
+const THEME_CFG = {
+  countryside: { margin: 800, blend: 70, amp: 160 },
+  coast: { margin: 900, blend: 70, amp: 260 },
+  mountain: { margin: 1400, blend: 45, amp: 1400 },
+  city: { margin: 800, blend: 20, amp: 40, resMul: 1.6 },
+  gp: { margin: 800, blend: 70, amp: 120 },
+  desert: { margin: 1000, blend: 60, amp: 150 },
+  forest: { margin: 750, blend: 38, amp: 240 },
+  citynight: { margin: 650, blend: 20, amp: 50, resMul: 1.6 },
+  oval: { margin: 800, blend: 70, amp: 30 },
+  snow: { margin: 1300, blend: 45, amp: 1700 },
+};
+// Nombre maximal de sommets du terrain détaillé (les très grands circuits sont un peu moins fins)
+const MAX_VERTS = 215000;
+// Taille d'un bloc (en cellules) pour l'élimination hors champ
+const CHUNK = 64;
 
 export class Terrain {
   constructor(track, theme, quality, seed = 7) {
@@ -30,10 +50,45 @@ export class Terrain {
     const b = track.bounds;
     this.coastZ = b.maxZ + 120;
     this.minZ = b.minZ;
-    this.margin = theme === 'mountain' ? 1400 : theme === 'coast' ? 900 : 800;
-    this.blend = theme === 'mountain' ? 45 : theme === 'city' ? 20 : 70;
-    this.res = quality.terrainRes * (theme === 'city' ? 1.6 : 1);
+    const cfg = THEME_CFG[theme] || THEME_CFG.gp;
+    this.cfg = cfg;
+    this.margin = cfg.margin;
+    this.blend = cfg.blend;
+    this.res = quality.terrainRes * (cfg.resMul || 1);
+    const area = (b.maxX - b.minX + 2 * this.margin) * (b.maxZ - b.minZ + 2 * this.margin);
+    if (area / (this.res * this.res) > MAX_VERTS) this.res = Math.sqrt(area / MAX_VERTS);
+    // Ovale : lac dans l'infield
+    if (theme === 'oval') {
+      this.lake = {
+        cx: (b.minX + b.maxX) / 2,
+        cz: (b.minZ + b.maxZ) / 2 - (b.maxZ - b.minZ) * 0.04,
+        rx: (b.maxX - b.minX) * 0.3,
+        rz: (b.maxZ - b.minZ) * 0.24,
+      };
+    }
     this.build();
+  }
+
+  // Distance (≈) à l'extérieur du rectangle englobant le circuit
+  outside(x, z) {
+    const b = this.track.bounds;
+    const dx = Math.max(b.minX - x, 0, x - b.maxX), dz = Math.max(b.minZ - z, 0, z - b.maxZ);
+    return Math.hypot(dx, dz);
+  }
+
+  // Profondeur relative du lac (0 hors du lac, 1 au centre) avec un rivage irrégulier
+  lakeDepth(x, z) {
+    const L = this.lake;
+    if (!L) return 0;
+    const u = (x - L.cx) / L.rx, v = (z - L.cz) / L.rz;
+    const d = Math.hypot(u, v) + 0.12 * this.noise2.fbm(x / 160, z / 160, 3);
+    return smoothstep(1, 0.75, d);
+  }
+
+  // Densité de forêt (0..1) : utilisée pour le sous-bois du terrain et le placement des arbres
+  forestMask(x, z) {
+    const n = this.noise.fbm(x / 420 + 31, z / 420 - 17, 3);
+    return smoothstep(-0.25, 0.2, n);
   }
 
   natural(x, z) {
@@ -60,6 +115,27 @@ export class Terrain {
         const d = Math.hypot(x - this.center.x, z - this.center.z);
         let h = base + 90 * N.fbm(x / 900, z / 900, 4) + 18 * N.fbm(x / 160, z / 160, 3);
         h += 520 * N.ridged(x / 2600 + 3, z / 2600 + 7, 5) * smoothstep(300, 2200, d);
+        return h;
+      }
+      case 'desert': {
+        // Dunes en croissant allongées par le vent, de plus en plus hautes loin du circuit
+        const out = this.outside(x, z);
+        const u = x * 0.8 + z * 0.6, w = -x * 0.6 + z * 0.8;
+        const dunes = N.ridged(u / 520 + 5, w / 190 + 2, 3);
+        const amp = 3 + 34 * smoothstep(40, 700, out);
+        return base + amp * dunes + 1.2 * N.fbm(x / 70, z / 70, 2) - 1;
+      }
+      case 'forest':
+        // Collines de l'Eifel : larges ondulations + vallons
+        return base + 34 * N.fbm(x / 650, z / 650, 4) + 9 * N.fbm(x / 140 + 4, z / 140, 3) + 40 * smoothstep(200, 900, this.outside(x, z)) * (N.fbm(x / 1300, z / 1300, 2) + 0.5);
+      case 'citynight':
+        return 0.3 * N.fbm(x / 300, z / 300, 2);
+      case 'oval':
+        return base + 0.6 * N.fbm(x / 400, z / 400, 2) - 4.5 * this.lakeDepth(x, z);
+      case 'snow': {
+        const d = Math.hypot(x - this.center.x, z - this.center.z);
+        let h = base + 55 * N.fbm(x / 800, z / 800, 4) + 12 * N.fbm(x / 150, z / 150, 3);
+        h += 820 * N.ridged(x / 2200 + 9, z / 2200 + 1, 5) * smoothstep(250, 1700, d);
         return h;
       }
       default:
@@ -154,18 +230,55 @@ export class Terrain {
       col[k * 3] = c[0]; col[k * 3 + 1] = c[1]; col[k * 3 + 2] = c[2];
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const det = terrainDetail();
+    const det = this.theme === 'desert' ? sandDetail() : this.theme === 'snow' ? snowDetail() : terrainDetail();
     const mat = new THREE.MeshStandardMaterial({
       vertexColors: true,
       map: det.map,
       normalMap: det.normalMap,
       normalScale: new THREE.Vector2(0.8, 0.8),
-      roughness: 0.97,
+      roughness: this.theme === 'snow' ? 0.82 : 0.97,
       metalness: 0,
     });
-    const mesh = new THREE.Mesh(g, mat);
-    mesh.receiveShadow = true;
-    this.mesh = mesh;
+    if (this.theme === 'desert') det.map.repeat.set(1, 1);
+    // Découpage en blocs (attributs partagés, index propres) : seuls les blocs visibles
+    // sont dessinés
+    const group = new THREE.Group();
+    group.name = 'terrain';
+    const cx = Math.ceil((nx - 1) / CHUNK), cz = Math.ceil((nz - 1) / CHUNK);
+    for (let bj = 0; bj < cz; bj++) {
+      for (let bi = 0; bi < cx; bi++) {
+        const i0 = bi * CHUNK, i1 = Math.min(nx - 1, i0 + CHUNK);
+        const j0 = bj * CHUNK, j1 = Math.min(nz - 1, j0 + CHUNK);
+        const cidx = new Uint32Array((i1 - i0) * (j1 - j0) * 6);
+        let q = 0;
+        let minY = Infinity, maxY = -Infinity;
+        for (let j = j0; j < j1; j++) {
+          for (let i = i0; i < i1; i++) {
+            const a = j * nx + i, bb = a + 1, c = a + nx, d = c + 1;
+            cidx[q++] = a; cidx[q++] = c; cidx[q++] = bb;
+            cidx[q++] = bb; cidx[q++] = c; cidx[q++] = d;
+          }
+          for (let i = i0; i <= i1; i++) {
+            const hh = heights[j * nx + i];
+            if (hh < minY) minY = hh;
+            if (hh > maxY) maxY = hh;
+          }
+        }
+        const cg = new THREE.BufferGeometry();
+        cg.setAttribute('position', g.attributes.position);
+        cg.setAttribute('normal', g.attributes.normal);
+        cg.setAttribute('uv', g.attributes.uv);
+        cg.setAttribute('color', g.attributes.color);
+        cg.setIndex(new THREE.BufferAttribute(cidx, 1));
+        cg.boundingBox = new THREE.Box3(new THREE.Vector3(x0 + i0 * res, minY, z0 + j0 * res), new THREE.Vector3(x0 + i1 * res, maxY, z0 + j1 * res));
+        cg.boundingSphere = cg.boundingBox.getBoundingSphere(new THREE.Sphere());
+        const m = new THREE.Mesh(cg, mat);
+        m.receiveShadow = true;
+        group.add(m);
+      }
+    }
+    this.mesh = group;
+    this.material = mat;
   }
 
   colorAt(x, y, z, ny, nearDist) {
@@ -225,6 +338,56 @@ export class Terrain {
         c = mix(c, [0.93, 0.95, 0.99], snow);
         break;
       }
+      case 'desert': {
+        // Sable doré : crêtes claires, creux plus ocre, sable tassé près de la piste
+        const ridge = N.fbm(x / 35 + 3, z / 35, 2);
+        c = [0.82 + v * 0.05, 0.64 + v * 0.05, 0.42 + v * 0.04];
+        c = mix(c, [0.9, 0.74, 0.52], smoothstep(0.05, 0.35, ridge) * 0.6);
+        c = mix(c, [0.7, 0.5, 0.32], smoothstep(0.1, 0.4, -v2) * 0.35);
+        c = mix(c, [0.66, 0.56, 0.42], (1 - smoothstep(4, 30, nearDist)) * 0.7);
+        // touffes de broussailles sèches
+        if (nearDist > 20 && v2 > 0.42) c = mix(c, [0.48, 0.42, 0.28], smoothstep(0.42, 0.55, v2) * 0.6);
+        break;
+      }
+      case 'forest': {
+        // Prairies de l'Eifel, sous-bois sombre sous la forêt, talus d'herbe rase
+        c = [0.17 + v * 0.03, 0.28 + v * 0.04, 0.09];
+        const f = this.forestMask(x, z);
+        c = mix(c, [0.06, 0.1, 0.045], f * smoothstep(8, 30, nearDist) * 0.9);
+        c = mix(c, [0.22, 0.34, 0.12], (1 - smoothstep(3, 14, nearDist)) * 0.6);
+        c = mix(c, [0.3, 0.27, 0.21], smoothstep(0.25, 0.5, slope)); // talus terreux
+        break;
+      }
+      case 'citynight': {
+        const g = 0.2 + v * 0.04 + v2 * 0.02;
+        c = [g, g, g * 1.06];
+        if (v > 0.3 && nearDist > 25) c = mix(c, [0.16, 0.24, 0.12], 0.75); // squares arborés
+        break;
+      }
+      case 'oval': {
+        // Gazon tondu (bandes près de la piste), rives sableuses du lac, fond vaseux
+        c = [0.23 + v * 0.03, 0.4 + v * 0.05, 0.13];
+        if (nearDist < 90) {
+          const stripe = Math.floor((x * 0.8 + z * 0.6) / 12) % 2 === 0 ? 1.07 : 0.94;
+          c = [c[0] * stripe, c[1] * stripe, c[2] * stripe];
+        }
+        const lk = this.lakeDepth(x, z);
+        if (lk > 0) {
+          c = mix(c, [0.72, 0.66, 0.5], smoothstep(0, 0.15, lk));
+          c = mix(c, [0.25, 0.27, 0.18], smoothstep(0.25, 0.6, lk));
+        }
+        break;
+      }
+      case 'snow': {
+        // Neige partout, roche sur les pentes raides, neige damée grisée au bord de la route
+        const w = 0.9 + v * 0.05;
+        c = [w * 0.97, w * 0.985, w];
+        c = mix(c, [0.78, 0.82, 0.9], smoothstep(0.1, 0.45, v2) * 0.35); // ombres bleutées / vagues
+        c = mix(c, [0.4, 0.39, 0.38], smoothstep(0.32, 0.52, slope));
+        c = mix(c, [0.62, 0.63, 0.66], (1 - smoothstep(3, 9, nearDist)) * 0.55);
+        c = mix(c, [0.74, 0.84, 0.94], smoothstep(this.pa + 450, this.pa + 700, y) * 0.6); // glace du glacier
+        break;
+      }
       default:
         c = [0.3, 0.42, 0.18];
     }
@@ -246,17 +409,29 @@ export class Terrain {
     return d + (c - d) * (1 - u) + (b - d) * (1 - v);
   }
 
+  backdropColor(h, amp) {
+    switch (this.theme) {
+      case 'mountain': return h > this.pa + amp * 0.45 ? [0.9, 0.92, 0.96] : [0.22, 0.3, 0.2];
+      case 'snow': return h > this.pa + amp * 0.3 ? [0.92, 0.94, 0.98] : [0.62, 0.66, 0.72];
+      case 'city': return [0.12, 0.12, 0.14];
+      case 'citynight': return [0.08, 0.08, 0.1];
+      case 'desert': return [0.74, 0.56, 0.38];
+      case 'forest': return [0.12, 0.19, 0.1];
+      default: return [0.22, 0.3, 0.2];
+    }
+  }
+
   // Relief lointain (silhouettes) au-delà du terrain détaillé
   buildBackdrop(skyColor, fogColor) {
     const t = this.track;
     const b = t.bounds;
     const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
     const r0 = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + this.margin * 0.85;
-    const r1 = r0 + (this.theme === 'mountain' ? 9000 : 5000);
+    const r1 = r0 + (this.theme === 'mountain' || this.theme === 'snow' ? 9000 : 5000);
     const seg = 160, rings = 6;
     const pos = [], col = [], idx = [];
     const N = this.noise;
-    const amp = { mountain: 1400, coast: 260, countryside: 160, gp: 120, city: 40 }[this.theme] ?? 150;
+    const amp = this.cfg.amp ?? 150;
     const fc = new THREE.Color(fogColor);
     for (let r = 0; r <= rings; r++) {
       const u = r / rings;
@@ -268,13 +443,13 @@ export class Terrain {
         if (r === 0) h = this.sampleGrid(x, z) - 5;
         else {
           const ridge = N.ridged(Math.cos(a) * 3 + 11, Math.sin(a) * 3 + u * 2, 5);
-          h = this.pa + amp * ridge * Math.sin(Math.min(1, u * 1.6) * Math.PI * 0.5) * (this.theme === 'mountain' ? 1 : 0.8);
+          h = this.pa + amp * ridge * Math.sin(Math.min(1, u * 1.6) * Math.PI * 0.5) * (this.theme === 'mountain' || this.theme === 'snow' ? 1 : 0.8);
           if (this.theme === 'coast' && Math.sin(a) > 0.25) h = -2; // la mer au sud
         }
         pos.push(x, h, z);
         // perspective atmosphérique
         const k = smoothstep(0, 1, u) * 0.85;
-        const base = this.theme === 'mountain' && h > this.pa + amp * 0.45 ? [0.9, 0.92, 0.96] : this.theme === 'city' ? [0.12, 0.12, 0.14] : [0.22, 0.3, 0.2];
+        const base = this.backdropColor(h, amp);
         col.push(lerp(base[0], fc.r, k), lerp(base[1], fc.g, k), lerp(base[2], fc.b, k));
       }
     }
