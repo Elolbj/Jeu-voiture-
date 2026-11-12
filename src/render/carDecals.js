@@ -264,8 +264,9 @@ export function buildDecals(shape, spec, bodyGeo, lod = 0) {
     const g = decalGeometry(proj, { ...o, col: col || o.col, uvScale: mat === 'grille' || mat === 'grille2' ? 25 : o.uvScale });
     return g ? [mat, g] : null;
   };
-  const place = (list, face0) => {
-    for (const [key, fx, fy, a, b, o0] of list) {
+  const place = (list, face0, fyK = 1) => {
+    for (const [key, fx, fy0, a, b, o0] of list) {
+      const fy = (o0.face || face0) === 'front' || (o0.face || face0) === 'rear' ? fy0 * fyK : fy0;
       const o = { ...o0 };
       const face = o.face || face0;
       const aa = o.aW ? o.aW * W : a;
@@ -304,7 +305,11 @@ export function buildDecals(shape, spec, bodyGeo, lod = 0) {
       if (r) put(r[0], r[1], true);
     }
     place([['amber', 0.66, 0.42, 0.06, 0.025, { n: 3 }], ['house', 0.66, 0.42, 0.075, 0.035, { n: 3, off: 0.003 }]], 'front');
-  } else place(HEAD[st.lights] || HEAD.slim, 'front');
+  } else {
+    // optiques modernes : légèrement sous l'arrondi du nez (sinon elles débordent sur le capot)
+    const k = ['classic', 'quadround', 'popup'].includes(st.lights) ? 1 : 0.9;
+    place(HEAD[st.lights] || HEAD.slim, 'front', k);
+  }
   place(GRILLE[st.grille] || GRILLE.mouth, 'front');
   if (st.tailPanel === 'black') place([['blk', 0, st.tailLights === 'triple' ? 0.7 : 0.8, 0, st.tailLights === 'triple' ? 0.1 : 0.05, { n: 8, aW: 0.9, center: true, off: 0.0032 }]], 'rear');
   place(TAIL[st.tailLights] || TAIL.slim, 'rear');

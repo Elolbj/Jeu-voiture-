@@ -26,6 +26,24 @@ function backdrop() {
   return t;
 }
 
+// Sol : halo de lumière doux sous la voiture, assombri vers les bords du studio
+function floorTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(256, 256, 0, 256, 256, 256);
+  gr.addColorStop(0, '#272a31');
+  gr.addColorStop(0.06, '#1d2025');
+  gr.addColorStop(0.13, '#121418');
+  gr.addColorStop(0.3, '#0b0c0f');
+  gr.addColorStop(1, '#07080a');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, 512, 512);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 // Environnement de studio pour les reflets : coupole en dégradé + boîtes à lumière
 function studioEnvironment(gl) {
   const studio = new THREE.Scene();
@@ -73,7 +91,7 @@ export class Showroom {
 
     // Sol brillant (semi-transparent : laisse voir le reflet de la voiture placé dessous)
     const floor = new THREE.Mesh(new THREE.CircleGeometry(40, 96), new THREE.MeshStandardMaterial({
-      color: 0x0b0c0f, roughness: 0.58, metalness: 0.0, transparent: true, opacity: 0.88, envMapIntensity: 0.45, depthWrite: false,
+      color: 0xffffff, map: floorTexture(), roughness: 0.58, metalness: 0.0, transparent: true, opacity: 0.88, envMapIntensity: 0.45, depthWrite: false,
     }));
     floor.rotation.x = -Math.PI / 2;
     floor.renderOrder = -1;
@@ -157,8 +175,10 @@ export class Showroom {
     r.position.y = -this.car.root.position.y;
     // passages de roues et intérieur invisibles dans le reflet (évite les aplats noirs sous la caisse)
     const well = carMaterials().well;
+    // tout le reflet est dessiné avant le sol translucide (vitres comprises), donc atténué par lui
     r.traverse((o) => {
       o.castShadow = false; o.receiveShadow = false;
+      o.renderOrder = -2;
       if (o.material === well) o.visible = false;
     });
     this.turntable.add(r);

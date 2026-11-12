@@ -24,6 +24,13 @@ function keyInterp(keys, t) {
 const SEC_LOW = [1 / 7, 2 / 7, 4 / 7];
 const SEC_UP = [2 / 7, 2 / 7, 3 / 7];
 
+// Arrondi du pavillon (superellipse) : points unitaires précalculés
+const CAB_ARC = [];
+for (let i = 1; i <= 12; i++) {
+  const a = (i / 12) * (Math.PI / 2);
+  CAB_ARC.push([Math.pow(Math.cos(a), 2 / 3.2), Math.pow(Math.sin(a), 2 / 3.2)]);
+}
+
 // Rampe linéaire de 0 à 1 terminée par un congé parabolique (pente nulle en u = 1) sur la fraction k
 function fillet(u, k) {
   const s = 1 / (1 - k / 2);
@@ -295,14 +302,15 @@ export class BodyShape {
     }
     if (t <= st.roofB) {
       const u = (t - st.roofF) / (st.roofB - st.roofF);
-      return roofH * (1 - 0.025 * Math.pow(2 * u - 1, 2));
+      // roofDrop : pavillon plongeant vers l'arrière (fraction de H)
+      return roofH * (1 - 0.025 * Math.pow(2 * u - 1, 2)) - (st.roofDrop || 0) * H * u;
     }
     if (t < st.rearB) {
       const u = (t - st.roofB) / (st.rearB - st.roofB);
-      const end = st.deck * H;
+      const end = st.deck * H, r0 = roofH * 0.975 - (st.roofDrop || 0) * H;
       // hayon (bicorps) : courbe qui se redresse vers le bas ; tricorps / fastback : lunette droite
       const k = st.rearB > 0.95 ? Math.pow(u, st.rearPow ?? 1.5) : 1 - fillet(1 - u, st.rwFillet ?? 0.45);
-      return roofH * 0.975 + (end - roofH * 0.975) * k;
+      return r0 + (end - r0) * k;
     }
     return st.deck * H;
   }
@@ -333,11 +341,7 @@ export class BodyShape {
       const u = i / 5, b = bulge * 4 * u * (1 - u);
       pts.push([bx + dx * u + nx * b, by + dy * u + ny * b]);
     }
-    const nA = 12, pw = 2 / 3.2;
-    for (let i = 1; i <= nA; i++) {
-      const a = (i / nA) * (Math.PI / 2);
-      pts.push([wr * Math.pow(Math.cos(a), pw), ry + rr * Math.pow(Math.sin(a), pw)]);
-    }
+    for (const [cx, sy] of CAB_ARC) pts.push([wr * cx, ry + rr * sy]);
     pts[pts.length - 1][0] = 0;
     const cum = [0];
     for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
@@ -515,21 +519,23 @@ export function buildBodyGeometry(shape, atlas, lod = 0) {
   for (let v = 0; v < keys.length; v++) if (keys[v] > maxKey) maxKey = keys[v];
   const acc = new Float64Array((maxKey + 1) * 3);
   const used = new Uint8Array(maxKey + 1);
-  const nrm = (P, a, b, c) => {
+  const n1 = [0, 0, 0], n0 = [0, 0, 0];
+  const nrm = (P, a, b, c, r) => {
     const ux = P[b * 3] - P[a * 3], uy = P[b * 3 + 1] - P[a * 3 + 1], uz = P[b * 3 + 2] - P[a * 3 + 2];
     const vx = P[c * 3] - P[a * 3], vy = P[c * 3 + 1] - P[a * 3 + 1], vz = P[c * 3 + 2] - P[a * 3 + 2];
-    return [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+    r[0] = uy * vz - uz * vy; r[1] = uz * vx - ux * vz; r[2] = ux * vy - uy * vx;
+    return r;
   };
   for (let i = 0; i < idx.length; i += 3) {
     const a = idx[i], b = idx[i + 1], c = idx[i + 2];
-    const n1 = nrm(pos, a, b, c);
+    nrm(pos, a, b, c, n1);
     const l1 = Math.hypot(n1[0], n1[1], n1[2]);
     if (l1 < 1e-9) continue;
-    const n0 = nrm(pos0, a, b, c);
+    nrm(pos0, a, b, c, n0);
     if (n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2] <= 0 && Math.hypot(n0[0], n0[1], n0[2]) > 1e-9) continue;
     keep.push(a, b, c);
-    for (const v of [a, b, c]) {
-      const o = keys[v] * 3;
+    for (let k = 0; k < 3; k++) {
+      const v = idx[i + k], o = keys[v] * 3;
       used[keys[v]] = 1;
       acc[o] += n1[0]; acc[o + 1] += n1[1]; acc[o + 2] += n1[2];
     }
@@ -899,10 +905,15 @@ export class SurfaceProjector {
     const u = Math.abs(d.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0).cross(d);
     u.addScaledVector(d, -u.dot(d)).normalize();
     const v = new THREE.Vector3().crossVectors(d, u).normalize();
-    const P = this.P, n = this.n;
+    const P = this.P, N = this.N, n = this.n;
     const bb = new Float32Array(n * 4);
+    // triangles nettement tournés à l'opposé du rayon : jamais touchés en premier (exclus de la grille)
+    const skip = new Uint8Array(n);
     let U0 = Infinity, U1 = -Infinity, V0 = Infinity, V1 = -Infinity;
     for (let i = 0; i < n; i++) {
+      const o9 = i * 9;
+      const nd = (N[o9] + N[o9 + 3] + N[o9 + 6]) * d.x + (N[o9 + 1] + N[o9 + 4] + N[o9 + 7]) * d.y + (N[o9 + 2] + N[o9 + 5] + N[o9 + 8]) * d.z;
+      if (nd > 0.75) { skip[i] = 1; continue; }
       let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
       for (let k = 0; k < 3; k++) {
         const o = i * 9 + k * 3;
@@ -918,20 +929,21 @@ export class SurfaceProjector {
     const cs = 0.05;
     const gw = Math.max(1, Math.ceil((U1 - U0) / cs)), gh = Math.max(1, Math.ceil((V1 - V0) / cs));
     const counts = new Uint32Array(gw * gh + 1);
-    const span = (i) => [
-      clamp(Math.floor((bb[i * 4] - U0) / cs), 0, gw - 1), clamp(Math.floor((bb[i * 4 + 1] - U0) / cs), 0, gw - 1),
-      clamp(Math.floor((bb[i * 4 + 2] - V0) / cs), 0, gh - 1), clamp(Math.floor((bb[i * 4 + 3] - V0) / cs), 0, gh - 1),
-    ];
+    const sp = new Int32Array(n * 4);
     for (let i = 0; i < n; i++) {
-      const [x0, x1, y0, y1] = span(i);
+      if (skip[i]) continue;
+      const b = i * 4;
+      const x0 = sp[b] = clamp(Math.floor((bb[b] - U0) / cs), 0, gw - 1), x1 = sp[b + 1] = clamp(Math.floor((bb[b + 1] - U0) / cs), 0, gw - 1);
+      const y0 = sp[b + 2] = clamp(Math.floor((bb[b + 2] - V0) / cs), 0, gh - 1), y1 = sp[b + 3] = clamp(Math.floor((bb[b + 3] - V0) / cs), 0, gh - 1);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) counts[y * gw + x + 1]++;
     }
     for (let c = 1; c <= gw * gh; c++) counts[c] += counts[c - 1];
     const items = new Uint32Array(counts[gw * gh]);
     const fill = counts.slice(0, gw * gh);
     for (let i = 0; i < n; i++) {
-      const [x0, x1, y0, y1] = span(i);
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) items[fill[y * gw + x]++] = i;
+      if (skip[i]) continue;
+      const b = i * 4;
+      for (let y = sp[b + 2]; y <= sp[b + 3]; y++) for (let x = sp[b]; x <= sp[b + 1]; x++) items[fill[y * gw + x]++] = i;
     }
     f = { d: d.clone(), u, v, bb, U0, V0, cs, gw, gh, start: counts, items };
     this.frames.set(key, f);

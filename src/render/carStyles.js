@@ -11,6 +11,8 @@
 //   le plus saillant, nosePow : forme de l'arrondi, cornerF : arrondi des coins en vue de dessus,
 //   w0F : largeur relative au bout du nez ; idem tail* à l'arrière. shoulder : hauteur de la ligne d'épaule.
 //   nL / nU : exposants des superellipses de section (bas / haut ; plus grand = plus carré), tuck : rentré du bas de caisse.
+//   beltR / beltPow : hauteur de ceinture au pied de la lunette (ceinture montante) et forme de la montée ;
+//   wsFillet / rwFillet : congés pare-brise / lunette ↔ pavillon ; roofDrop : pavillon plongeant ; sideEnd : fin des vitres latérales.
 // Équipements :
 //   lights / tailLights / grille : dessins des optiques et calandres (voir carBody.js), spoiler : aileron d'origine,
 //   doors : 0 / 2 / 4, frame : 'black' | 'chrome' (encadrements de vitres), bPillar : 'black' | 'body',
@@ -29,12 +31,14 @@ export const DEFAULTS = {
 export const STYLES = {
   hatch: {
     overF: 0.58, nose: 0.52, hood: 0.64, belt: 0.67, deck: 0.71, tail: 0.69,
-    ws: 0.3, roofF: 0.49, roofB: 0.8, rearB: 0.955, cabW: 0.92, roofW: 0.76, clear: 0.15, rearPow: 1.5, nU: 6,
+    ws: 0.3, roofF: 0.49, roofB: 0.82, rearB: 0.955, cabW: 0.92, roofW: 0.76, clear: 0.15, rearPow: 1.5, nU: 6,
     noseR: 0.1, noseRB: 0.12, noseY: 0.55, nosePow: 3.2, cornerF: 0.22, w0F: 0.74,
     tailR: 0.06, tailRB: 0.12, tailY: 0.42, tailPow: 3.2, cornerR: 0.18, w0R: 0.84,
     lights: 'round', tailLights: 'tall', grille: 'bar', spoiler: 'lip', doors: 2, shoulder: 0.76,
     antenna: 'whip', skirt: null,
     beltR: 0.7,
+    sideEnd: 0.84,
+    roofDrop: 0.025,
   },
   hatch2: {
     overF: 0.58, nose: 0.5, hood: 0.625, belt: 0.66, deck: 0.7, tail: 0.66,
@@ -45,6 +49,8 @@ export const STYLES = {
     skirt: 'body', lip: 'black',
     beltR: 0.7,
     roof: 0.985,
+    sideEnd: 0.86,
+    roofDrop: 0.03,
   },
   roadster: {
     overF: 0.52, nose: 0.43, hood: 0.625, belt: 0.66, deck: 0.7, tail: 0.66,
@@ -72,6 +78,7 @@ export const STYLES = {
     lights: 'slim', tailLights: 'block', grille: 'mouth', spoiler: 'wing', doors: 4, shoulder: 0.8,
     skirt: 'body', antenna: 'fin', hoodScoop: true,
     beltR: 0.69,
+    roofDrop: 0.012,
   },
   sedan2: {
     overF: 0.5, nose: 0.5, hood: 0.65, belt: 0.67, deck: 0.73, tail: 0.71,
@@ -81,6 +88,7 @@ export const STYLES = {
     lights: 'twin', tailLights: 'block', grille: 'kidney', spoiler: 'lip', doors: 2, shoulder: 0.8, carbonRoof: true,
     lip: 'carbon', skirt: 'body', diffuser: 'small', exhaust: 'quad', flare: 0.035,
     beltR: 0.71,
+    roofDrop: 0.01,
   },
   gtcoupe: {
     overF: 0.52, nose: 0.5, hood: 0.66, belt: 0.68, deck: 0.75, tail: 0.74,
@@ -205,6 +213,8 @@ export const STYLES = {
     flare: 0.05, fenderGap: 0.055, roofRails: true, exhaust: 'oval', antenna: 'fin', diffuser: 'small',
     skirt: 'black', lip: 'black',
     beltR: 0.69,
+    sideEnd: 0.935,
+    roofDrop: 0.018,
   },
   // Hypercar : très basse, cockpit en bulle, ailes saillantes, gros diffuseur, échappement central.
   hypercar: {

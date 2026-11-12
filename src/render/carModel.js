@@ -273,13 +273,20 @@ export function effectiveCustom(spec, opts = {}) {
   };
 }
 
-// Personnalisation plausible pour un adversaire (déterministe selon la graine)
+// Personnalisation plausible pour un adversaire (déterministe selon la graine et le modèle) :
+// voitures de course en livrée complète, classiques sobres, sportives parfois préparées.
 export function randomCustom(spec, seed = 1, color) {
-  const r = rng(((seed + 1) * 2654435761) >>> 0 || 7);
+  let h = (Math.imul((seed | 0) + 1, 2654435761) ^ 0x9e3779b9) >>> 0;
+  for (let i = 0; i < spec.id.length; i++) h = Math.imul(h ^ spec.id.charCodeAt(i), 16777619) >>> 0;
+  const r = rng(h || 7);
   const st = resolveStyle(spec);
   const race = !!spec.livery || !!st.race;
+  const classic = st.bumpers === 'chrome' || (spec.year || 2000) < 1975;
+  const cat = spec.category;
   const base = color || r.pick(spec.paints || ['#c8102e']);
-  const finish = race ? r.pick(['gloss', 'gloss', 'gloss', 'metallic', 'pearl', 'satin']) : r.pick(['metallic', 'metallic', 'metallic', 'gloss', 'pearl', 'satin', 'matte']);
+  const finish = race ? r.pick(['gloss', 'gloss', 'gloss', 'metallic', 'pearl', 'satin'])
+    : classic ? r.pick(['gloss', 'gloss', 'metallic'])
+      : r.pick(['metallic', 'metallic', 'metallic', 'gloss', 'gloss', 'pearl', 'satin', cat === 'supercar' || cat === 'gt' ? 'matte' : 'metallic']);
   const paint = { color: base, finish };
   if (finish === 'pearl') paint.pearl = r.pick(['#c9e4ff', '#ffd6f0', '#d8ffd6', '#fff1c4', '#e0d0ff']);
   const c1 = pickContrasting(base, RACE_ACCENTS, r);
@@ -287,28 +294,39 @@ export function randomCustom(spec, seed = 1, color) {
   const out = { paint };
   if (race) {
     out.livery = { design: r.pick(['racing', 'racing', 'racing', 'stripes', 'split', 'chevron', 'retro', 'gradient', 'side']), color: c1, color2: c2, number: r.int(2, 99), sponsors: true };
-  } else if (r() < 0.35) {
-    out.livery = { design: r.pick(['stripes', 'side', 'split', 'gradient', 'retro', 'chevron']), color: c1, color2: c2, number: r() < 0.5 ? r.int(1, 99) : null, sponsors: r() < 0.35 };
+  } else {
+    // routières : livrée discrète et rare (bandes, filets latéraux), numéro et sponsors pour les amateurs de piste
+    const pLiv = classic ? 0.18 : cat === 'supercar' ? 0.15 : 0.28;
+    if (r() < pLiv) {
+      const designs = classic ? ['stripes', 'retro', 'stripes'] : ['stripes', 'side', 'side', 'split', 'retro', 'gradient', 'chevron'];
+      const trackDay = !classic && r() < 0.3;
+      out.livery = { design: r.pick(designs), color: c1, color2: c2, number: trackDay || (classic && r() < 0.4) ? r.int(1, 99) : null, sponsors: trackDay };
+    }
   }
-  const classic = st.bumpers === 'chrome';
   const pools = {
-    compacte: ['five', 'six', 'ten', 'split', 'multi', 'classic'],
+    compacte: ['five', 'six', 'ten', 'split', 'multi'],
     sport: ['five', 'six', 'ten', 'split', 'mesh', 'turbine', 'multi'],
     gt: ['five', 'split', 'mesh', 'multi', 'turbine', 'six'],
     supercar: ['split', 'five', 'turbine', 'multi', 'race'],
     course: ['race', 'mesh', 'ten', 'six'],
     proto: ['race', 'mesh', 'ten'],
   };
-  const pool = classic ? ['classic', 'five', 'mesh', 'classic'] : pools[spec.category] || RIM_STYLES;
-  const rimFinish = r.pick(['gloss', 'gloss', 'gloss', 'matte', 'chrome']);
+  const pool = classic ? ['classic', 'five', 'mesh', 'classic'] : pools[cat] || RIM_STYLES;
+  const rimFinish = classic ? r.pick(['chrome', 'chrome', 'gloss']) : r.pick(['gloss', 'gloss', 'gloss', 'matte', race ? 'gloss' : 'chrome']);
+  const rimColors = classic ? ['#d3d6da', '#c9ccd1', '#e2e4e8'] : ['#c9ccd1', '#2a2c30', '#1b1c1f', '#b9a06a', '#e2e4e8', '#3b3e45', '#8d9096'];
   out.rims = {
-    style: r() < 0.4 ? spec.wheel.rim : r.pick(pool),
-    color: rimFinish === 'chrome' ? '#e6e8ec' : r.pick(['#c9ccd1', '#2a2c30', '#1b1c1f', '#b9a06a', '#e2e4e8', '#3b3e45', '#8d9096']),
+    style: r() < 0.4 ? spec.wheel.rim || 'five' : r.pick(pool),
+    color: rimFinish === 'chrome' ? '#e6e8ec' : r.pick(rimColors),
     finish: rimFinish,
   };
-  out.caliper = r.pick(['#c8102e', '#d4a017', '#1b1c1f', '#2453a4', '#e05a00', '#9a9da3', '#c8102e']);
-  out.tint = race ? 0.15 : Math.round(r.range(0.2, 0.8) * 20) / 20;
-  out.wing = race ? 'stock' : r.pick(['stock', 'stock', 'stock', 'stock', 'lip', 'duck', 'gt']);
+  out.caliper = classic ? r.pick(['#3a3c40', '#2a2b2e']) : r.pick(['#c8102e', '#d4a017', '#1b1c1f', '#2453a4', '#e05a00', '#9a9da3', '#c8102e']);
+  out.tint = race ? 0.15 : classic ? Math.round(r.range(0.1, 0.3) * 20) / 20 : Math.round(r.range(0.2, 0.8) * 20) / 20;
+  // aileron : jamais sur les classiques ni les voitures de course (aéro homologuée)
+  const wings = race || classic ? ['stock']
+    : cat === 'compacte' ? ['stock', 'stock', 'stock', 'stock', 'lip', 'duck']
+      : cat === 'supercar' ? ['stock', 'stock', 'stock', 'lip']
+        : ['stock', 'stock', 'stock', 'stock', 'lip', 'duck', 'gt'];
+  out.wing = r.pick(wings);
   const L = 'ABCDEFGHJKLMNPRSTVWXYZ';
   out.plate = `${L[r.int(0, 21)]}${L[r.int(0, 21)]}-${r.int(100, 999)}-${L[r.int(0, 21)]}${L[r.int(0, 21)]}`;
   return out;
