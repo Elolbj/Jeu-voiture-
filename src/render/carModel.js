@@ -445,6 +445,27 @@ function wheelSetGeometry(C, spec, rimStyle) {
   C.wheelSets.set(rimStyle, g);
   return g;
 }
+// Roues simplifiées (distance moyenne) : cylindre de gomme + voile plein, mêmes os
+function wheelSetLowGeometry(C, spec) {
+  if (C.wheelSetLow) return C.wheelSetLow;
+  const R = spec.wheel.radius, w = spec.wheel.width, rr = rimRadius(spec.wheel);
+  const tire = new THREE.CylinderGeometry(R, R, w, 16, 1, false);
+  tire.rotateZ(Math.PI / 2);
+  const face = new THREE.CircleGeometry(rr * 0.97, 12);
+  face.rotateY(Math.PI / 2);
+  face.translate(w / 2 + 0.002, 0, 0);
+  const b = new Batch({ uv: true, skin: true, sel: true });
+  const M = new THREE.Matrix4(), S = new THREE.Matrix4();
+  for (let i = 0; i < 4; i++) {
+    const p = wheelRest(C.shape, spec, i);
+    M.makeTranslation(p.x, p.y, p.z);
+    if (i % 2 === 0) M.multiply(S.makeScale(-1, 1, 1));
+    b.add(tire, { matrix: M, bone: i, sel: 3, white: true });
+    b.add(face, { matrix: M, bone: i, sel: 1, solid: 0x9a9a9a });
+  }
+  C.wheelSetLow = b.build();
+  return C.wheelSetLow;
+}
 function wheelRest(shape, spec, i) {
   return new THREE.Vector3((i % 2 === 0 ? -1 : 1) * spec.dims.track * 0.5, spec.wheel.radius, i < 2 ? shape.zAxleF : shape.zAxleR);
 }
@@ -454,7 +475,7 @@ function wheelRest(shape, spec, i) {
 // Seuils en « mètres équivalents » à 60° de champ (la taille à l'écran compte, pas la distance brute).
 // ---------------------------------------------------------------------------
 const LIVE = new Set();
-const LOD_FAR = 55, LOD_DETAIL = 14, LOD_INTERIOR = 16;
+const LOD_FAR = 55, LOD_DETAIL = 14, LOD_INTERIOR = 16, LOD_WHEELS = 22;
 const _cp = new THREE.Vector3();
 const TAN30 = Math.tan(Math.PI / 6);
 export function updateCarLods(camera) {
@@ -543,7 +564,9 @@ export class CarModel {
       // course : un seul maillage à squelette pour les quatre roues
       const atlas = wheelAtlasFor(spec);
       this.wheelMat = wheelSetMaterial(atlas);
-      const ws = new THREE.SkinnedMesh(wheelSetGeometry(C, spec, spec.wheel.rim || 'five'), this.wheelMat);
+      this.wheelGeoHi = wheelSetGeometry(C, spec, spec.wheel.rim || 'five');
+      this.wheelGeoLow = wheelSetLowGeometry(C, spec);
+      const ws = new THREE.SkinnedMesh(this.wheelGeoHi, this.wheelMat);
       ws.receiveShadow = true;
       const bones = [];
       for (let i = 0; i < 8; i++) {
@@ -637,7 +660,11 @@ export class CarModel {
     if (!prev || !same(prev.paint, cu.paint) || !same(prev.livery, cu.livery)) this.applyPaint(cu);
     // jantes
     if (!prev || prev.rims.style !== cu.rims.style) {
-      if (this.wheelSet) this.wheelSet.geometry = wheelSetGeometry(this.cache, this.spec, cu.rims.style);
+      if (this.wheelSet) {
+        const lowNow = this.wheelSet.geometry === this.wheelGeoLow;
+        this.wheelGeoHi = wheelSetGeometry(this.cache, this.spec, cu.rims.style);
+        if (!lowNow) this.wheelSet.geometry = this.wheelGeoHi;
+      }
       else {
         const g = rimGeometry(this.spec.wheel.radius, this.spec.wheel.width, cu.rims.style, rimRadius(this.spec.wheel));
         for (const w of this.wheels) w.rim.geometry = g;
@@ -732,6 +759,10 @@ export class CarModel {
     const k = Math.sqrt(dx * dx + dy * dy + dz * dz) * fk;
     const far = this.lod === 1 ? k > LOD_FAR * 0.94 : k > LOD_FAR;
     this.applyView(far, k < LOD_DETAIL, k < LOD_INTERIOR && this.interiorWanted !== false);
+    if (this.wheelSet) {
+      const g = k > LOD_WHEELS ? this.wheelGeoLow : this.wheelGeoHi;
+      if (this.wheelSet.geometry !== g) this.wheelSet.geometry = g;
+    }
   }
 
   applyView(far, details, interior) {

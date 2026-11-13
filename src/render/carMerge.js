@@ -134,7 +134,7 @@ export function trimMaterial({ envMapIntensity = 1, polygonOffset = true } = {})
 }
 
 // ---------------------------------------------------------------------------
-// Matériau des roues : atlas pneu/disque (sel 0), jante teintée (sel 1), étrier (sel 2)
+// Matériau des roues : atlas pneu/disque (sel 0), jante teintée (sel 1), étrier (sel 2), gomme unie (sel 3, roues simplifiées)
 // ---------------------------------------------------------------------------
 export function wheelSetMaterial(atlas) {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, map: atlas.map, roughnessMap: atlas.orm, metalnessMap: atlas.orm, roughness: 1, metalness: 1, vertexColors: true });
@@ -151,9 +151,9 @@ export function wheelSetMaterial(atlas) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSel = aSel;');
     s.fragmentShader = s.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vSel;\nuniform vec3 uRim, uCal;\nuniform vec2 uRimRM;')
-      .replace('#include <map_fragment>', '#include <map_fragment>\nif (vSel > 0.5) diffuseColor.rgb = vSel < 1.5 ? uRim : uCal;')
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (vSel > 0.5) roughnessFactor = vSel < 1.5 ? uRimRM.x : 0.35;')
-      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nif (vSel > 0.5) metalnessFactor = vSel < 1.5 ? uRimRM.y : 0.25;');
+      .replace('#include <map_fragment>', '#include <map_fragment>\nif (vSel > 0.5) diffuseColor.rgb = vSel < 1.5 ? uRim : vSel < 2.5 ? uCal : vec3(0.03);')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (vSel > 0.5) roughnessFactor = vSel < 1.5 ? uRimRM.x : vSel < 2.5 ? 0.35 : 0.85;')
+      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nif (vSel > 0.5) metalnessFactor = vSel < 1.5 ? uRimRM.y : vSel < 2.5 ? 0.25 : 0.0;');
   };
   m.customProgramCacheKey = () => 'carWheels';
   return m;

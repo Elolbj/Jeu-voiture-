@@ -149,7 +149,7 @@ export class CameraRig {
       }
       // Tête du pilote : se déplace à l'opposé de l'accélération (inertie), amortie
       if (mode === 'cockpit') {
-        const hx = clamp(-acc.x * 0.0045, -0.045, 0.045), hz = clamp(acc.z * 0.0035, -0.04, 0.04), hy = clamp(-acc.y * 0.002, -0.02, 0.02);
+        const hx = clamp(-acc.x * 0.0045, -0.045, 0.045), hz = clamp(-acc.z * 0.0035, -0.04, 0.04), hy = clamp(-acc.y * 0.002, -0.02, 0.02);
         this.head.x = damp(this.head.x, hx, 7, dt);
         this.head.y = damp(this.head.y, hy, 7, dt);
         this.head.z = damp(this.head.z, hz, 7, dt);
@@ -162,7 +162,7 @@ export class CameraRig {
       if (lookBack) cam.rotateY(Math.PI);
       if (mode === 'cockpit') {
         cam.rotateX(-0.06 + this.head.z * 0.6);
-        cam.rotateZ(this.head.x * 1.4);
+        cam.rotateZ(this.head.x * 0.6); // la tête compense en partie le roulis vers l'extérieur
       }
       const fov = mode === 'cockpit' ? 64 : clamp(62 + speed * 0.08, 62, 78);
       cam.fov = damp(cam.fov, fov, 3, dt);
