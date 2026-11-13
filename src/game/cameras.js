@@ -1,5 +1,6 @@
-// Caméras de course : poursuite (proche/lointaine), capot, cockpit, pare-chocs,
-// rétro, caméras TV pour les ralentis, orbite.
+// Caméras de course : poursuite (proche/lointaine), capot, cockpit (mouvement de tête selon les G), pare-chocs,
+// rétro, caméras TV pour les ralentis, orbite. Indique au rendu l'effet de vitesse et les gouttes à l'écran
+// (camera.userData.speedFx / drops).
 import * as THREE from 'three';
 import { clamp, damp, lerp } from '../core/utils.js';
 
@@ -10,6 +11,8 @@ const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _f = new THREE.Vector3();
+const _a = new THREE.Vector3();
+const _iq = new THREE.Quaternion();
 
 export class CameraRig {
   constructor(track) {
@@ -25,6 +28,28 @@ export class CameraRig {
     this.tvSpots = this.buildTvSpots();
     this.tvIndex = -1;
     this.orbitAngle = 0;
+    // accélération lissée (repère voiture) pour les mouvements de tête
+    this.prevVel = new THREE.Vector3();
+    this.acc = new THREE.Vector3();
+    this.head = new THREE.Vector3();
+    this.hasPrevVel = false;
+    this.camera.userData.speedFx = 0;
+    this.camera.userData.drops = 0;
+  }
+
+  // Accélération du véhicule dans son repère (x : latéral, y : vertical, z : longitudinal), lissée
+  trackAccel(dt, v) {
+    const vel = v.velocity;
+    if (!vel || dt <= 0) return this.acc;
+    if (this.hasPrevVel) {
+      _a.subVectors(vel, this.prevVel).divideScalar(dt);
+      if (_a.lengthSq() > 80 * 80) _a.set(0, 0, 0); // téléportation (réapparition, ralenti)
+      _a.applyQuaternion(_iq.copy(v.quaternion).invert());
+      this.acc.lerp(_a, 1 - Math.exp(-dt * 6));
+    }
+    this.prevVel.copy(vel);
+    this.hasPrevVel = true;
+    return this.acc;
   }
 
   buildTvSpots() {
@@ -70,6 +95,10 @@ export class CameraRig {
       this.snap = true;
     }
     const lookBack = !!opts.lookBack;
+    const acc = this.trackAccel(dt, v);
+    const ud = cam.userData;
+    ud.drops = mode === 'chase' || mode === 'chaseFar' ? 0 : 1;
+    ud.speedFx = clamp((speed - 35) / 45, 0, 1) * (mode === 'chaseFar' ? 0.5 : mode === 'chase' ? 0.7 : 1);
     if (mode === 'chase' || mode === 'chaseFar') {
       const far = mode === 'chaseFar';
       // Lacet de la caméra : suit le cap avec retard, et la direction de la vitesse en glissade
@@ -100,6 +129,10 @@ export class CameraRig {
       if (this.pos.y < ground + 0.6) this.pos.y = ground + 0.6;
       cam.position.copy(this.pos);
       this.look.copy(v.position).addScaledVector(dir, lookBack ? -4 : 4);
+      // regarde légèrement vers l'intérieur du virage (accélération latérale), sans à-coups
+      const lat = clamp(-acc.x * 0.035, -0.6, 0.6);
+      this.look.x += dir.z * -lat;
+      this.look.z += dir.x * lat;
       this.look.y = v.position.y + (far ? 0.9 : 0.75);
       cam.lookAt(this.look);
       const fov = clamp(58 + speed * 0.09, 58, 74);
@@ -114,16 +147,27 @@ export class CameraRig {
       } else {
         local.set(0, model ? model.body.position.y + 0.45 : -0.1, model?.shape ? model.shape.zFront + 0.15 : -2);
       }
+      // Tête du pilote : se déplace à l'opposé de l'accélération (inertie), amortie
+      if (mode === 'cockpit') {
+        const hx = clamp(-acc.x * 0.0045, -0.045, 0.045), hz = clamp(acc.z * 0.0035, -0.04, 0.04), hy = clamp(-acc.y * 0.002, -0.02, 0.02);
+        this.head.x = damp(this.head.x, hx, 7, dt);
+        this.head.y = damp(this.head.y, hy, 7, dt);
+        this.head.z = damp(this.head.z, hz, 7, dt);
+        local.add(this.head);
+      } else this.head.set(0, 0, 0);
       cam.position.copy(local).applyQuaternion(v.quaternion).add(v.position);
-      // Orientation : celle de la voiture, avec léger amortissement du roulis
+      // Orientation : celle de la voiture (inclinaison de la tête selon les G en cockpit)
       _q.copy(v.quaternion);
       cam.quaternion.copy(_q);
       if (lookBack) cam.rotateY(Math.PI);
-      if (mode === 'cockpit') cam.rotateX(-0.06);
+      if (mode === 'cockpit') {
+        cam.rotateX(-0.06 + this.head.z * 0.6);
+        cam.rotateZ(this.head.x * 1.4);
+      }
       const fov = mode === 'cockpit' ? 64 : clamp(62 + speed * 0.08, 62, 78);
       cam.fov = damp(cam.fov, fov, 3, dt);
       // Vibrations
-      const shake = (opts.bump ?? 0) * 0.012 + clamp(speed / 90, 0, 1) * 0.0012;
+      const shake = ((opts.bump ?? 0) * 0.012 + clamp(speed / 90, 0, 1) * 0.0012) * (mode === 'hood' ? 0.6 : 1);
       cam.position.y += Math.sin(this.t * 63) * shake;
       cam.rotation.z += Math.sin(this.t * 37) * shake * 0.3;
     }
@@ -146,16 +190,22 @@ export class CameraRig {
     }
     if (best !== this.tvIndex) {
       // ne change que si la voiture s'éloigne trop de la caméra courante
-      if (this.tvIndex < 0 || spots[this.tvIndex].pos.distanceTo(v.position) > 70) this.tvIndex = best;
+      if (this.tvIndex < 0 || spots[this.tvIndex].pos.distanceTo(v.position) > 70) {
+        this.tvIndex = best;
+        this.lookInit = false; // coupe franche : pas de panoramique depuis l'ancienne cible
+      }
     }
+    cam.userData.drops = 0;
+    cam.userData.speedFx = 0;
     const spot = spots[Math.max(0, this.tvIndex)];
     cam.position.copy(spot.pos);
-    this.look.lerp(_w.copy(v.position).add(_v.set(0, 0.6, 0)), this.lookInit ? 1 - Math.exp(-dt * 8) : 1);
+    const cut = !this.lookInit;
+    this.look.lerp(_w.copy(v.position).add(_v.set(0, 0.6, 0)), cut ? 1 : 1 - Math.exp(-dt * 8));
     this.lookInit = true;
     cam.lookAt(this.look);
     const d = spot.pos.distanceTo(v.position);
     const fov = clamp((2 * Math.atan(5.5 / Math.max(d, 1)) * 180) / Math.PI, 8, 55);
-    cam.fov = lerp(cam.fov, fov, 1 - Math.exp(-dt * 6));
+    cam.fov = cut ? fov : lerp(cam.fov, fov, 1 - Math.exp(-dt * 6));
     cam.updateProjectionMatrix();
     return cam;
   }
@@ -166,6 +216,8 @@ export class CameraRig {
     cam.position.set(center.x + Math.cos(this.orbitAngle) * radius, center.y + height, center.z + Math.sin(this.orbitAngle) * radius);
     cam.lookAt(center.x, center.y + 0.6, center.z);
     cam.fov = 45;
+    cam.userData.drops = 0;
+    cam.userData.speedFx = 0;
     cam.updateProjectionMatrix();
     return cam;
   }

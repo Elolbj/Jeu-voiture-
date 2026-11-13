@@ -1,4 +1,4 @@
-// Effets : traces de pneus, fumée / poussière, étincelles.
+// Effets : traces de pneus, fumée / poussière, gerbes d'eau sous la pluie, étincelles.
 import * as THREE from 'three';
 import { smokeSprite, radialSprite } from '../world/textures.js';
 import { clamp } from '../core/utils.js';
@@ -183,10 +183,38 @@ export class CarEffects {
     this.smoke = new Particles(scene, quality.qualityName === 'basse' ? 250 : 700);
     this.sparks = new Particles(scene, 300, { additive: true, texture: radialSprite('spark', 'rgba(255,230,160,1)', 'rgba(255,120,20,0)', 32) });
     this.acc = new Map();
+    // Pluie (scene.userData.rain, fixé par World) : gerbes d'eau soulevées par les roues
+    this.wet = scene.userData.rain || 0;
+    this.spray = this.wet ? new Particles(scene, quality.qualityName === 'basse' ? 400 : 1100) : null;
+    this.sprayAcc = new Float32Array(256);
+    this.sprayTint = scene.userData.night ? 0.2 : 0.8;
+  }
+
+  // Gerbes d'eau : surtout derrière les roues arrière, proportionnelles à la vitesse
+  updateSpray(dt, v, id) {
+    const sp = Math.abs(v.speed);
+    if (sp < 5) return;
+    const k = Math.min(1, (sp - 5) / 40);
+    for (let i = 0; i < 4; i++) {
+      const w = v.wheels[i];
+      if (!w.contact) continue;
+      const slot = (id * 4 + i) % 256;
+      let a = this.sprayAcc[slot] + dt * k * (i >= 2 ? 22 : 9);
+      while (a > 1) {
+        a -= 1;
+        const cp = w.contactPoint;
+        const r1 = Math.random(), r2 = Math.random(), r3 = Math.random();
+        this.spray.emit(cp.x + (r1 - 0.5) * 0.4, cp.y + 0.12, cp.z + (r2 - 0.5) * 0.4,
+          v.velocity.x * 0.35 + (r2 - 0.5) * 2, 0.9 + r3 * 1.6, v.velocity.z * 0.35 + (r1 - 0.5) * 2,
+          0.45 + r3 * 0.5, 0.5, 2.6 + k * 2.2, 0.16 + 0.12 * k, this.sprayTint * 0.97, this.sprayTint, this.sprayTint * 1.04, 3.5);
+      }
+      this.sprayAcc[slot] = a;
+    }
   }
 
   // Effets d'une voiture (pneus)
   updateCar(dt, v, id, near = true) {
+    if (this.spray && near) this.updateSpray(dt, v, id);
     for (let i = 0; i < 4; i++) {
       const w = v.wheels[i];
       const key = id * 4 + i;
@@ -199,9 +227,10 @@ export class CarEffects {
       _side.y = 0;
       _side.normalize();
       if (surf === 'asphalt' || surf === 'curb') {
-        const inten = sliding ? clamp((slip - 2.5) / 9, 0.15, 1) : 0;
+        // sous la pluie : traces à peine marquées, pas de fumée
+        const inten = sliding ? clamp((slip - 2.5) / 9, 0.15, 1) * (this.wet ? 0.3 : 1) : 0;
         this.skids.add(key, w.contactPoint, _side, w.width * 0.95, inten);
-        if (near && sliding && slip > 5) {
+        if (near && sliding && slip > 5 && !this.wet) {
           let a = (this.acc.get(key) || 0) + dt * clamp(slip * 3, 0, 40);
           while (a > 1) {
             a -= 1;
@@ -244,6 +273,7 @@ export class CarEffects {
     this.skids.update();
     this.smoke.update(dt, h, fov);
     this.sparks.update(dt, h, fov);
+    this.spray?.update(dt, h, fov);
   }
 }
 

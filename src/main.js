@@ -20,6 +20,7 @@ if (hash.has('race')) {
   app.startRace({
     trackId: hash.get('race') || 'collines',
     time: hash.get('time') || undefined,
+    weather: hash.get('weather') || undefined,
     laps: parseInt(hash.get('laps') || '2', 10),
     mode: 'race',
     title: 'Test',
