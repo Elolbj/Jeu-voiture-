@@ -45,7 +45,7 @@ export class World {
 
   update(dt, focus, camPos) {
     this.focus.copy(focus);
-    this.env.update(focus);
+    this.env.update(focus, camPos);
     this.scenery.update(dt, camPos || focus);
   }
 

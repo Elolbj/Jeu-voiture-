@@ -4,6 +4,9 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { rng } from '../core/utils.js';
 import { radialSprite } from './textures.js';
 
+const _c = new THREE.Vector3();
+const _d = new THREE.Vector3();
+
 export const TIME_PRESETS = {
   day: {
     elev: 50, azim: 145, sun: 0xfff3e2, sunI: 3.1, sky: 0xbfd8ff, ground: 0x6b6450, hemiI: 0.9,
@@ -90,11 +93,17 @@ export class Environment {
     sun.castShadow = q.shadows;
     sun.shadow.mapSize.set(q.shadowMap, q.shadowMap);
     const sc = sun.shadow.camera;
-    const ext = 45;
+    const ext = 42;
+    this.shadowExt = ext;
     sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext;
-    sc.near = 1; sc.far = 600;
-    sun.shadow.bias = -0.00025;
-    sun.shadow.normalBias = 0.035;
+    sc.near = 50; sc.far = 420;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.03;
+    sun.shadow.radius = 1.5;
+    // repère de la caméra d'ombre (axes x/y de la projection orthographique)
+    const lx = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), this.sunDir).normalize();
+    this.lightBasis = { x: lx, y: new THREE.Vector3().crossVectors(this.sunDir, lx).normalize() };
+    this.shadowFwd = new THREE.Vector3(0, 0, -1);
     scene.add(sun);
     scene.add(sun.target);
     this.sun = sun;
@@ -173,18 +182,24 @@ export class Environment {
     this.scene.environmentIntensity = this.night ? 0.6 : 1.0;
   }
 
-  // Fait suivre la zone d'ombre portée à la caméra / voiture suivie
-  update(focus) {
+  // Fait suivre la zone d'ombre portée à la voiture suivie, décalée vers l'avant de la caméra,
+  // et l'aligne sur la grille des texels dans le repère de la lumière (ombres stables, sans scintillement)
+  update(focus, camPos) {
     const s = this.sun;
-    s.target.position.copy(focus);
-    s.position.copy(focus).addScaledVector(this.sunDir, 250);
+    const ext = this.shadowExt;
+    if (camPos) {
+      _d.set(focus.x - camPos.x, 0, focus.z - camPos.z);
+      const l = _d.length();
+      if (l > 0.5) this.shadowFwd.lerp(_d.multiplyScalar(1 / l), 0.2).normalize();
+    }
+    _c.copy(focus).addScaledVector(this.shadowFwd, ext * 0.45);
+    const texel = (2 * ext) / s.shadow.mapSize.x;
+    const L = this.lightBasis;
+    const u = Math.round(_c.dot(L.x) / texel) * texel, v = Math.round(_c.dot(L.y) / texel) * texel, w = _c.dot(this.sunDir);
+    _c.copy(L.x).multiplyScalar(u).addScaledVector(L.y, v).addScaledVector(this.sunDir, w);
+    s.target.position.copy(_c);
+    s.position.copy(_c).addScaledVector(this.sunDir, 250);
     s.target.updateMatrixWorld();
-    // Évite le scintillement : aligne la position sur la grille des texels
-    const texel = (2 * 45) / s.shadow.mapSize.x;
-    s.position.x = Math.round(s.position.x / texel) * texel;
-    s.position.z = Math.round(s.position.z / texel) * texel;
-    s.target.position.x = s.position.x - this.sunDir.x * 250;
-    s.target.position.z = s.position.z - this.sunDir.z * 250;
     this.sky.position.copy(focus);
     if (this.stars) this.stars.position.copy(focus);
     if (this.moon) this.moon.position.copy(focus).addScaledVector(this.sunDir, 8500);
