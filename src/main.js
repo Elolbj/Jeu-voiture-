@@ -1,7 +1,7 @@
 import { App } from './app.js';
 import { buildSpec } from './data/cars.js';
 
-const hash = new URLSearchParams(location.hash.slice(1));
+const hash = new URLSearchParams(location.hash.replace(/^#+/, ''));
 const app = new App();
 window.__app = app;
 

@@ -36,6 +36,10 @@ export class AIDriver {
     const brakeCap = G * (1.55 + (spec.aero.clF + spec.aero.clR) * 0.35) * (spec.brakeMul || 1) * 0.9;
     this.decel = Math.min(brakeCap, TIRES[spec.tires].mu * 0.93 * G) * this.grip * 0.9;
     this.anticipK = this.wet ? 0.4 : 0.32;
+    // Sous la pluie, on se laisse plus de place (glissades) et on patiente plus au départ
+    this.sideGap = SIDE_GAP + (this.wet ? 0.45 : 0);
+    this.laneGap = LANE_GAP + (this.wet ? 0.45 : 0);
+    this.startCalm = this.wet ? 14 : 6;
     // Variabilité du rythme d'un tour à l'autre (plus faible chez les meilleurs)
     this.paceVar = 0.003 + (1 - clamp(this.skill, 0, 1)) * 0.012;
     this.pace = 1;
@@ -96,7 +100,7 @@ export class AIDriver {
     }
 
     this.scanCorner(p.s, speed);
-    this.perceive(cars, speed);
+    this.perceive(cars);
     this.updateMistake(dt, raceTime);
     const hw = t.halfWidth - EDGE;
 
@@ -108,7 +112,7 @@ export class AIDriver {
     const sT = p.s + look;
     const lineT = this.line.offsetAt(sT);
     let desired;
-    if (this.passCar) desired = this.latOf(this.passCar, sT, hw) + this.passSide * SIDE_GAP * 1.12;
+    if (this.passCar) desired = this.latOf(this.passCar, sT, hw) + this.passSide * this.sideGap * 1.12;
     else if (this.defendSide) desired = this.defendLat;
     else desired = lineT + this.lineBias;
     let edge = this.passCar ? hw + 0.45 : hw;
@@ -254,7 +258,7 @@ export class AIDriver {
     this.cornerId = ei;
   }
 
-  perceive(cars, speed) {
+  perceive(cars) {
     const t = this.track;
     const L = t.length;
     const me = this.car;
@@ -282,10 +286,10 @@ export class AIDriver {
       if (ds > -15 && ds < 20 && adl < 6) this.closeTraffic = true;
       // Côte à côte : on laisse l'espace d'une voiture
       if ((Math.abs(ds) < len + 0.8 && adl > 1.0) || Math.abs(ds) < len * 0.7) {
-        if (adl < SIDE_GAP + 2) {
+        if (adl < this.sideGap + 2) {
           // on lui laisse aussi la place de rester sur la piste
-          if (dLat >= 0) this.rightLim = Math.min(this.rightLim, c.lateral - SIDE_GAP, hw - SIDE_GAP);
-          else this.leftLim = Math.max(this.leftLim, c.lateral + SIDE_GAP, -hw + SIDE_GAP);
+          if (dLat >= 0) this.rightLim = Math.min(this.rightLim, c.lateral - this.sideGap, hw - this.sideGap);
+          else this.leftLim = Math.max(this.leftLim, c.lateral + this.sideGap, -hw + this.sideGap);
           if (adl < sideLat) { sideLat = adl; this.side = c; this.sideDs = ds; }
         }
         continue;
@@ -295,14 +299,13 @@ export class AIDriver {
         const plan = this.line.offsetAt(c.s) + this.off;
         const u = clamp(ds / 18, 0, 1);
         const myLat = this.lateral + (plan - this.lateral) * u;
-        if (Math.abs(c.lateral - myLat) < LANE_GAP && ds < this.laneDs) { this.lane = c; this.laneDs = ds; }
+        if (Math.abs(c.lateral - myLat) < this.laneGap && ds < this.laneDs) { this.lane = c; this.laneDs = ds; }
       } else if (-ds < this.attackDs && adl < 6) {
         this.attacker = c;
         this.attackDs = -ds;
       }
     }
     this.alongside = !!this.side;
-    void speed;
   }
 
   // Défense de la position et dépassements.
@@ -310,7 +313,7 @@ export class AIDriver {
     const t = this.track;
     const L = t.length;
     const me = this.car;
-    const start = raceTime < 6;
+    const start = raceTime < this.startCalm;
     // ---- Défense : un seul changement de ligne vers l'intérieur du prochain virage ----
     if (this.defendSide) {
       if (this.cornerId !== this.defendCorner || this.cornerDist < 12 || (!this.attacker && !this.side)) this.defendSide = 0;
@@ -341,7 +344,7 @@ export class AIDriver {
       const len = this.v.halfLength + c.vehicle.halfLength;
       this.passT += dt;
       const room = hw + 0.45 - this.passSide * c.lateral; // en dépassement, on s'autorise le bord de piste
-      this.doorT = room < SIDE_GAP - 0.45 ? (this.doorT || 0) + dt : 0;
+      this.doorT = room < this.sideGap - 0.45 ? (this.doorT || 0) + dt : 0;
       const outside = this.passSide !== this.cornerSign;
       this.loseT = ds > len + 6 && speed < c.vehicle.speed - 0.3 ? (this.loseT || 0) + dt : 0;
       if (ds < -(len + 1.5) || ds > 55 || this.passT > 14 || this.loseT > 1.5) { this.passCar = null; this.passWhy = ds < 0 ? 'réussi' : 'abandon'; }
@@ -391,9 +394,9 @@ export class AIDriver {
         const brakeIn = Math.min(this.brakeIn, this.farCorner - 40);
         const outsideOk = this.cornerDist > 110 && !this.braking && (ds + len * 0.6) / gain < (brakeIn / Math.max(speed, 5)) * 0.8;
         let side = 0;
-        if (outsideOk && this.cornerDist > 220 && roomOut > roomIn + 1 && roomOut >= SIDE_GAP + 0.15 && this.sideFree(-cs, c, hw)) side = -cs;
-        else if (roomIn >= SIDE_GAP + 0.15 && this.sideFree(cs, c, hw) && (this.cornerDist > 25 || roomIn > SIDE_GAP + 1)) side = cs;
-        else if (outsideOk && roomOut >= SIDE_GAP + 0.15 && this.sideFree(-cs, c, hw)) side = -cs;
+        if (outsideOk && this.cornerDist > 220 && roomOut > roomIn + 1 && roomOut >= this.sideGap + 0.15 && this.sideFree(-cs, c, hw)) side = -cs;
+        else if (roomIn >= this.sideGap + 0.15 && this.sideFree(cs, c, hw) && (this.cornerDist > 25 || roomIn > this.sideGap + 1)) side = cs;
+        else if (outsideOk && roomOut >= this.sideGap + 0.15 && this.sideFree(-cs, c, hw)) side = -cs;
         if (side) {
           this.passCar = c; this.passSide = side; this.passT = 0;
           this.passWas = c; this.passLast = c; this.passWhy = null;
@@ -411,7 +414,7 @@ export class AIDriver {
 
   // Le côté visé n'est-il pas occupé par une voiture côte à côte ?
   sideFree(side, c, hw) {
-    const want = c.lateral + side * SIDE_GAP;
+    const want = c.lateral + side * this.sideGap;
     if (side > 0) return want <= this.rightLim + 0.3 && want <= hw + 0.2;
     return want >= this.leftLim - 0.3 && want >= -hw - 0.2;
   }
@@ -443,7 +446,7 @@ export class AIDriver {
     const cornering = this.braking || this.cornerDist < 30;
     if (devPlan > 1 && cornering) {
       const inside = (latT - lineT) * this.cornerSign > 0;
-      vt *= 1 - Math.min(0.08, (devPlan - 1) * (inside ? 0.006 : 0.012));
+      vt *= 1 - Math.min(this.wet ? 0.11 : 0.08, (devPlan - 1) * (inside ? 0.006 : 0.012) * (this.wet ? 1.5 : 1));
     }
     // Roue contre roue au freinage : la voiture en retard (ou à l'extérieur à hauteur égale) cède
     if (this.side && cornering) {
@@ -512,7 +515,7 @@ export class AIDriver {
     if (r < 0.45) {
       // freinage tardif : on vise le profil comme si le virage était plus loin
       this.mistake = 'late';
-      this.mistakeAmt = 6 + 40 * sev;
+      this.mistakeAmt = (6 + 40 * sev) * (this.wet ? 0.6 : 1); // sous la pluie, l'erreur coûte déjà cher
     } else if (r < 0.75) {
       // élargit en sortie de virage
       this.mistake = 'wide';

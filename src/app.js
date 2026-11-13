@@ -18,14 +18,14 @@ export class App {
     this.uiRoot = document.getElementById('ui');
     this.profile = loadProfile();
     const settings = this.profile?.settings;
-    const devQ = new URLSearchParams(location.hash.slice(1)).get('q');
+    const devQ = new URLSearchParams(location.hash.replace(/^#+/, '')).get('q');
     this.renderer = new Renderer(this.viewport, devQ || settings?.quality || 'haute');
     this.input = input;
     this.ui = new UI(this.uiRoot, input);
     this.showroom = new Showroom(this.renderer);
     this.touch = new TouchControls(this.uiRoot);
     input.touch = this.touch;
-    const devHash = new URLSearchParams(location.hash.slice(1));
+    const devHash = new URLSearchParams(location.hash.replace(/^#+/, ''));
     this.noRender = devHash.has('norender');
     // Pause automatique quand la fenêtre perd le focus
     document.addEventListener('visibilitychange', () => {
@@ -37,8 +37,8 @@ export class App {
     this.showroomCarKey = null;
     this.fps = 60;
     // Pas de temps maximal par image (le mode test peut l'augmenter)
-    this.maxDt = parseFloat(new URLSearchParams(location.hash.slice(1)).get('maxdt') || '0.1');
-    this.timeScale = parseFloat(new URLSearchParams(location.hash.slice(1)).get('timescale') || '1');
+    this.maxDt = parseFloat(new URLSearchParams(location.hash.replace(/^#+/, '')).get('maxdt') || '0.1');
+    this.timeScale = parseFloat(new URLSearchParams(location.hash.replace(/^#+/, '')).get('timescale') || '1');
   }
 
   get settings() {
