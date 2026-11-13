@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { setMaxAnisotropy } from '../world/textures.js';
+import { updateCarLods } from './carModel.js';
 
 export const QUALITY = {
   basse: { pixelRatio: 0.75, shadows: false, shadowMap: 1024, bloom: false, fxaa: true, msaa: 0, trees: 0.4, terrainRes: 14, maxDpr: 1 },
@@ -103,6 +104,7 @@ export class Renderer {
       camera.aspect = this.width / this.height;
       camera.updateProjectionMatrix();
     }
+    updateCarLods(camera);
     this.renderPass.scene = scene;
     this.renderPass.camera = camera;
     this.composer.render();
