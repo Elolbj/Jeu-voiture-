@@ -1,8 +1,11 @@
-// Ciel physique, soleil/lune, lumières, brouillard et carte d'environnement selon l'heure.
+// Ciel physique, soleil/lune, lumières, brouillard et carte d'environnement selon l'heure et la météo (pluie).
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { rng } from '../core/utils.js';
 import { radialSprite } from './textures.js';
+
+const _c = new THREE.Vector3();
+const _d = new THREE.Vector3();
 
 export const TIME_PRESETS = {
   day: {
@@ -27,11 +30,28 @@ export const TIME_PRESETS = {
   },
 };
 
+// Ciel couvert : assombrit et désature la sortie du shader de ciel (pluie)
+function overcast(sky, mul, sat) {
+  sky.material.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('gl_FragColor = vec4( texColor, 1.0 );',
+      `float skyL = dot(texColor, vec3(0.2126, 0.7152, 0.0722));
+      gl_FragColor = vec4(mix(vec3(skyL), texColor, ${sat.toFixed(3)}) * ${mul.toFixed(3)}, 1.0);`);
+  };
+  sky.material.customProgramCacheKey = () => 'skyOvercast';
+}
+
 export class Environment {
   constructor(renderer, scene, timeName = 'day', opts = {}) {
     this.renderer = renderer;
     this.scene = scene;
-    const P = TIME_PRESETS[timeName] || TIME_PRESETS.day;
+    const base = TIME_PRESETS[timeName] || TIME_PRESETS.day;
+    // Pluie : ciel couvert, soleil voilé, lumière diffuse, brume
+    this.rain = opts.weather === 'pluie';
+    const P = this.rain ? {
+      ...base, sunI: base.sunI * 0.22, hemiI: base.hemiI * (base.night ? 1.2 : 1.5), sky: base.night ? 0x1c2230 : 0x9aa3ae, ground: base.night ? 0x0a0b0e : 0x4a4c4e,
+      turbidity: 10, rayleigh: base.night ? 0.3 : 0.7, mie: 0.012, mieG: 0.7, clouds: 0.98, fog: base.fog * 4.5 + 0.0006,
+      exposure: base.exposure * (base.night ? 1.0 : 1.12), bloom: base.bloom * 0.8,
+    } : base;
     this.preset = P;
     this.night = !!P.night;
     const q = renderer.quality;
@@ -44,6 +64,7 @@ export class Environment {
     // Ciel
     const sky = new Sky();
     sky.scale.setScalar(20000);
+    if (this.rain) overcast(sky, this.night ? 0.8 : 0.5, 0.3);
     const u = sky.material.uniforms;
     u.turbidity.value = P.turbidity;
     u.rayleigh.value = P.rayleigh;
@@ -51,16 +72,17 @@ export class Environment {
     u.mieDirectionalG.value = P.mieG;
     if (u.cloudCoverage) {
       u.cloudCoverage.value = P.clouds;
-      u.cloudDensity.value = 0.5;
-      u.cloudScale.value = 0.00018;
+      u.cloudDensity.value = this.rain ? 0.95 : 0.5;
+      u.cloudScale.value = this.rain ? 0.00011 : 0.00018;
     }
+    if (this.rain && u.showSunDisc) u.showSunDisc.value = 0;
     const skySun = this.night ? new THREE.Vector3(0.2, -0.25, -1).normalize() : this.sunDir;
     u.sunPosition.value.copy(skySun).multiplyScalar(450000);
     this.sky = sky;
     scene.add(sky);
 
-    // Étoiles + lune la nuit
-    if (this.night) {
+    // Étoiles + lune la nuit (cachées par les nuages sous la pluie)
+    if (this.night && !this.rain) {
       const r = rng(42);
       const n = 2500;
       const pos = new Float32Array(n * 3);
@@ -90,11 +112,17 @@ export class Environment {
     sun.castShadow = q.shadows;
     sun.shadow.mapSize.set(q.shadowMap, q.shadowMap);
     const sc = sun.shadow.camera;
-    const ext = 45;
+    const ext = 42;
+    this.shadowExt = ext;
     sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext;
-    sc.near = 1; sc.far = 600;
-    sun.shadow.bias = -0.00025;
-    sun.shadow.normalBias = 0.035;
+    sc.near = 50; sc.far = 420;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.03;
+    sun.shadow.radius = 1.5;
+    // repère de la caméra d'ombre (axes x/y de la projection orthographique)
+    const lx = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), this.sunDir).normalize();
+    this.lightBasis = { x: lx, y: new THREE.Vector3().crossVectors(this.sunDir, lx).normalize() };
+    this.shadowFwd = new THREE.Vector3(0, 0, -1);
     scene.add(sun);
     scene.add(sun.target);
     this.sun = sun;
@@ -116,6 +144,7 @@ export class Environment {
     const envScene = new THREE.Scene();
     const sky2 = new Sky();
     sky2.scale.setScalar(1000);
+    if (this.rain) overcast(sky2, this.night ? 0.8 : 0.5, 0.3);
     sky2.material.uniforms = THREE.UniformsUtils.clone(this.sky.material.uniforms);
     if (sky2.material.uniforms.showSunDisc) sky2.material.uniforms.showSunDisc.value = 0;
     envScene.add(sky2);
@@ -165,6 +194,11 @@ export class Environment {
       this.fogColor = new THREE.Color(this.preset.sky);
     }
     if (this.night) this.fogColor.setRGB(0.035, 0.045, 0.075);
+    if (this.rain) {
+      // brume grise, désaturée
+      const l = this.fogColor.r * 0.2126 + this.fogColor.g * 0.7152 + this.fogColor.b * 0.0722;
+      this.fogColor.lerp(new THREE.Color(l, l * 1.02, l * 1.06), 0.8).multiplyScalar(this.night ? 1.4 : 1);
+    }
     cubeRT.dispose();
     const pmrem = new THREE.PMREMGenerator(gl);
     this.envMap = pmrem.fromScene(envScene, 0, 0.1, 3000).texture;
@@ -173,18 +207,24 @@ export class Environment {
     this.scene.environmentIntensity = this.night ? 0.6 : 1.0;
   }
 
-  // Fait suivre la zone d'ombre portée à la caméra / voiture suivie
-  update(focus) {
+  // Fait suivre la zone d'ombre portée à la voiture suivie, décalée vers l'avant de la caméra,
+  // et l'aligne sur la grille des texels dans le repère de la lumière (ombres stables, sans scintillement)
+  update(focus, camPos) {
     const s = this.sun;
-    s.target.position.copy(focus);
-    s.position.copy(focus).addScaledVector(this.sunDir, 250);
+    const ext = this.shadowExt;
+    if (camPos) {
+      _d.set(focus.x - camPos.x, 0, focus.z - camPos.z);
+      const l = _d.length();
+      if (l > 0.5) this.shadowFwd.lerp(_d.multiplyScalar(1 / l), 0.2).normalize();
+    }
+    _c.copy(focus).addScaledVector(this.shadowFwd, ext * 0.45);
+    const texel = (2 * ext) / s.shadow.mapSize.x;
+    const L = this.lightBasis;
+    const u = Math.round(_c.dot(L.x) / texel) * texel, v = Math.round(_c.dot(L.y) / texel) * texel, w = _c.dot(this.sunDir);
+    _c.copy(L.x).multiplyScalar(u).addScaledVector(L.y, v).addScaledVector(this.sunDir, w);
+    s.target.position.copy(_c);
+    s.position.copy(_c).addScaledVector(this.sunDir, 250);
     s.target.updateMatrixWorld();
-    // Évite le scintillement : aligne la position sur la grille des texels
-    const texel = (2 * 45) / s.shadow.mapSize.x;
-    s.position.x = Math.round(s.position.x / texel) * texel;
-    s.position.z = Math.round(s.position.z / texel) * texel;
-    s.target.position.x = s.position.x - this.sunDir.x * 250;
-    s.target.position.z = s.position.z - this.sunDir.z * 250;
     this.sky.position.copy(focus);
     if (this.stars) this.stars.position.copy(focus);
     if (this.moon) this.moon.position.copy(focus).addScaledVector(this.sunDir, 8500);

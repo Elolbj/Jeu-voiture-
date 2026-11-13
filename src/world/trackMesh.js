@@ -1,5 +1,5 @@
 // Maillages du circuit : chaussée, marquages, vibreurs, dégagements, glissières / murs,
-// ligne de départ, cases de grille, portique de départ.
+// ligne de départ, cases de grille, portique de départ. Chaussée sèche ou mouillée (opts.wet).
 import * as THREE from 'three';
 import { clamp, lerp } from '../core/utils.js';
 import * as TX from './textures.js';
@@ -51,7 +51,10 @@ class StripBuilder {
     for (let k = 0; k < points.length; k++) {
       this.pos.push(points[k][0], points[k][1], points[k][2]);
       this.uv.push(uvs[k][0], uvs[k][1]);
-      if (cols) this.col.push(cols[k], cols[k], cols[k]);
+      if (cols) {
+        const c = cols[k];
+        if (Array.isArray(c)) this.col.push(c[0], c[1], c[2]); else this.col.push(c, c, c);
+      }
       this.nv++;
     }
     return start;
@@ -74,6 +77,39 @@ class StripBuilder {
   }
 }
 
+// Chaussée : asphalte détaillé + variations à grande échelle (réparations, joints, taches), traces de gomme
+// sur la trajectoire (deux bandes, plus sombres et plus lisses), bords poussiéreux ; par temps de pluie,
+// surface sombre et brillante avec flaques (normale aplatie, rugosité quasi nulle : reflets du ciel).
+function roadMaterial(asph, color, wet) {
+  const m = new THREE.MeshStandardMaterial({
+    map: asph.map, normalMap: asph.normalMap, normalScale: new THREE.Vector2(0.45, 0.45), roughnessMap: asph.roughnessMap,
+    roughness: 1, metalness: 0, vertexColors: true, color,
+  });
+  const U = { tMacro: { value: TX.asphaltMacro() }, uWet: { value: wet } };
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, U);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D tMacro;\nuniform float uWet;')
+      .replace('#include <color_fragment>', `
+        float rLat = vMapUv.x * 7.0;
+        float rD = rLat - (vColor.g - 0.5) * 20.0;
+        float rHw = vColor.b * 20.0;
+        float rub = 0.5 * exp(-pow((rD - 0.8) / 0.45, 2.0)) + 0.5 * exp(-pow((rD + 0.8) / 0.45, 2.0)) + 0.3 * exp(-rD * rD / 2.5);
+        float rEdge = smoothstep(rHw - 1.4, rHw - 0.05, abs(rLat));
+        vec4 mac = texture2D(tMacro, vec2(rLat / 16.0, vMapUv.y * 7.0 / 64.0));
+        float puddle = smoothstep(0.68, 0.86, mac.b + rEdge * 0.2) * uWet;
+        diffuseColor.rgb *= vColor.r * (0.62 + mac.r * 0.76) * (1.0 - 0.2 * rub);
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.12, 1.07, 0.96), rEdge * 0.5 * (1.0 - uWet));
+        diffuseColor.rgb *= mix(1.0, 0.5, uWet) * (1.0 - 0.25 * puddle);`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor *= (0.72 + mac.g * 0.56) * (1.0 - 0.15 * rub);
+        roughnessFactor = mix(roughnessFactor, mix(0.3 + roughnessFactor * 0.15, 0.04, puddle), uWet);`)
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize(mix(normal, nonPerturbedNormal, clamp(puddle * 0.95 + uWet * 0.25, 0.0, 1.0)));');
+  };
+  m.customProgramCacheKey = () => 'road';
+  return m;
+}
+
 export function buildTrackMeshes(track, opts = {}) {
   const group = new THREE.Group();
   group.name = 'track';
@@ -87,16 +123,8 @@ export function buildTrackMeshes(track, opts = {}) {
 
   // ------------------------------------------------------------ Chaussée
   const asph = TX.asphalt();
-  const roadMat = new THREE.MeshStandardMaterial({
-    map: asph.map,
-    normalMap: asph.normalMap,
-    normalScale: new THREE.Vector2(0.6, 0.6),
-    roughnessMap: asph.roughnessMap,
-    roughness: 1,
-    metalness: 0,
-    vertexColors: true,
-    color: theme === 'city' ? 0xb8b8bc : 0xffffff,
-  });
+  const wet = opts.wet || 0;
+  const roadMat = roadMaterial(asph, theme === 'city' ? 0xb8b8bc : 0xffffff, wet);
   const road = new StripBuilder();
   const NL = 12;
   let prev = -1;
@@ -109,11 +137,8 @@ export function buildTrackMeshes(track, opts = {}) {
       const lat = -hw + (2 * hw * k) / NL;
       pts.push(worldPoint(track, ii, lat, surfaceY(track, ii, lat), [0, 0, 0]));
       uvs.push([lat / 7, s / 7]);
-      // gomme sur la trajectoire + bords plus clairs
-      const d = (lat - lineOff) / 1.7;
-      let c = 1 - 0.2 * Math.exp(-d * d);
-      c *= 1 + 0.06 * Math.min(1, Math.abs(Math.abs(lat) - hw) < 1 ? 1 : 0);
-      cols.push(c);
+      // couleur de sommet détournée : R = teinte, G = décalage de la trajectoire (gomme), B = demi-largeur (bords)
+      cols.push([1, lineOff / 20 + 0.5, hw / 20]);
     }
     const st = road.row(pts, uvs, cols);
     if (prev >= 0) road.connect(prev, st, NL + 1);
@@ -124,7 +149,7 @@ export function buildTrackMeshes(track, opts = {}) {
   group.add(roadMesh);
 
   // ------------------------------------------------------------ Marquages
-  const paintMat = new THREE.MeshStandardMaterial({ color: 0xe9e9e4, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const paintMat = new THREE.MeshStandardMaterial({ color: wet ? 0xb9b9b4 : 0xe9e9e4, roughness: wet ? 0.3 : 0.75, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   const lines = new StripBuilder();
   const addLine = (latC, width, dashed = false) => {
     let prevL = -1;
@@ -151,7 +176,7 @@ export function buildTrackMeshes(track, opts = {}) {
 
   // ------------------------------------------------------------ Vibreurs
   const curbTex = theme === 'city' ? TX.curb('#d6b400', '#1a1a1a') : TX.curb();
-  const curbMat = new THREE.MeshStandardMaterial({ map: curbTex, roughness: 0.6, metalness: 0 });
+  const curbMat = new THREE.MeshStandardMaterial({ map: curbTex, roughness: wet ? 0.22 : 0.6, metalness: 0, color: wet ? 0xb0b0b0 : 0xffffff });
   const curbs = new StripBuilder();
   for (const side of [-1, 1]) {
     const arr = side > 0 ? track.curbR : track.curbL;
@@ -185,9 +210,9 @@ export function buildTrackMeshes(track, opts = {}) {
   const grassT = TX.grass(theme === 'coast' ? [0.36, 0.42, 0.2] : theme === 'mountain' ? [0.3, 0.4, 0.2] : [0.3, 0.46, 0.18]);
   const gravelT = TX.gravel();
   const runMats = [
-    new THREE.MeshStandardMaterial({ map: grassT.map, normalMap: grassT.normalMap, roughness: 0.95, color: 0xffffff }),
-    new THREE.MeshStandardMaterial({ map: gravelT.map, normalMap: gravelT.normalMap, roughness: 0.95 }),
-    new THREE.MeshStandardMaterial({ map: asph.map, normalMap: asph.normalMap, roughnessMap: asph.roughnessMap, roughness: 1, color: theme === 'city' ? 0x9a9aa0 : 0xc8c8c8 }),
+    new THREE.MeshStandardMaterial({ map: grassT.map, normalMap: grassT.normalMap, roughness: wet ? 0.7 : 0.95, color: wet ? 0xc8c8c8 : 0xffffff }),
+    new THREE.MeshStandardMaterial({ map: gravelT.map, normalMap: gravelT.normalMap, roughness: wet ? 0.6 : 0.95, color: wet ? 0xb4b4b4 : 0xffffff }),
+    new THREE.MeshStandardMaterial({ map: asph.map, normalMap: asph.normalMap, roughnessMap: asph.roughnessMap, roughness: wet ? 0.35 : 1, color: new THREE.Color(theme === 'city' ? 0x9a9aa0 : 0xc8c8c8).multiplyScalar(wet ? 0.65 : 1) }),
   ];
   const runB = [new StripBuilder(), new StripBuilder(), new StripBuilder()];
   for (const side of [-1, 1]) {
@@ -236,8 +261,9 @@ export function buildTrackMeshes(track, opts = {}) {
   const startS = track.startS;
   const chk = TX.checker();
   const lineMat = new THREE.MeshStandardMaterial({ map: chk, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
-  const quadAcross = (s, len, mat, lat0 = -hw, lat1 = hw, lift = 0.006) => {
-    const b = new StripBuilder();
+  const quadAcross = (s, len, mat, lat0 = -hw, lat1 = hw, lift = 0.006, into = null) => {
+    const b = into || new StripBuilder();
+    const n0 = b.nv;
     for (const ds of [-len / 2, len / 2]) {
       const ii = track.indexAt(s + ds);
       const pts = [];
@@ -247,7 +273,8 @@ export function buildTrackMeshes(track, opts = {}) {
       }
       b.row(pts, ds < 0 ? [[0, 0], [1, 0]] : [[0, 1], [1, 1]]);
     }
-    b.connect(0, 2, 2);
+    b.connect(n0, n0 + 2, 2);
+    if (into) return null;
     const m = new THREE.Mesh(b.geometry(), mat);
     m.receiveShadow = true;
     group.add(m);
@@ -255,13 +282,17 @@ export function buildTrackMeshes(track, opts = {}) {
   };
   chk.repeat.set(1, 1);
   quadAcross(startS, 1.6, lineMat);
-  // Cases de grille
+  // Cases de grille (un seul maillage)
+  const gridB = new StripBuilder();
   for (let k = 0; k < 16; k++) {
     const row = Math.floor(k / 2);
     const s = startS - 6 - row * 9 - (k % 2) * 4.5;
     const lat = (k % 2 === 0 ? -1 : 1) * hw * 0.42;
-    quadAcross(s + 2.6, 0.18, paintMat, lat - 1.3, lat + 1.3, 0.005);
+    quadAcross(s + 2.6, 0.18, paintMat, lat - 1.3, lat + 1.3, 0.005, gridB);
   }
+  const gridMesh = new THREE.Mesh(gridB.geometry(), paintMat);
+  gridMesh.receiveShadow = true;
+  group.add(gridMesh);
   if (!track.closed) {
     // Ligne d'arrivée de la course de côte
     quadAcross(track.length - 30, 1.6, lineMat);

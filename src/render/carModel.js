@@ -1,17 +1,18 @@
 // Modèles de voitures procéduraux : assemblage (caisse, habitacle vitré, décalques, pièces, roues, intérieur,
 // pilote), matériaux (peinture vernie / métallisée / nacrée / mate / satinée / chromée, carbone tissé…),
 // personnalisation en direct (applyCustom), personnalisations aléatoires des adversaires (randomCustom),
-// niveaux de détail et cache des géométries par modèle.
+// niveaux de détail automatiques et cache des géométries par modèle (lots fusionnés par matériau : carMerge.js).
 import * as THREE from 'three';
 import { rng } from '../core/utils.js';
 import { STYLES, resolveStyle } from './carStyles.js';
 import { BodyShape, Atlas, buildBodyGeometry, buildCabin, atlasUV, fixNormals } from './carBody.js';
 import { buildDecals } from './carDecals.js';
-import { buildWheel, buildWing, wingKind, buildBodyParts, wellsGeometry, lowWheelsGeometry, rimGeometry, rimRadius, RIM_STYLES } from './carParts.js';
+import { buildWheel, buildWing, wingKind, buildBodyParts, wellsGeometry, lowWheelsGeometry, rimGeometry, rimRadius, RIM_STYLES, tireDiscGeometry, caliperGeometry } from './carParts.js';
 import { buildInterior, buildDriver, gloveParts } from './carInterior.js';
 import { paintLivery, releaseLivery, LIVERY_DESIGNS, contrast } from './livery.js';
 import { flakeNormal, carbonTextures, honeycomb, barsGrille, meshGrille, plateTexture, badgeAtlas, gaugeTexture, seatTexture, wheelAtlas } from './carTextures.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { Batch, CH, trimMaterial, wheelSetMaterial, shadowProxy } from './carMerge.js';
 
 export { STYLES, resolveStyle, LIVERY_DESIGNS, RIM_STYLES };
 export const PAINT_FINISHES = ['gloss', 'metallic', 'pearl', 'matte', 'satin', 'chrome'];
@@ -335,6 +336,156 @@ export function randomCustom(spec, seed = 1, color) {
 }
 
 // ---------------------------------------------------------------------------
+// Lots fusionnés par matériau (cache par modèle) : un appel de dessin par matériau au lieu d'un par pièce
+// ---------------------------------------------------------------------------
+const RM = {
+  blk: [0.34, 0.2], chrome: [0.06, 1], mirror: [0.02, 1], plastic: [0.72, 0.05], lp: [0.13, 0.85], well: [1, 0],
+  fabric: [0.96, 0], cage: [0.4, 0.8], visor: [0.05, 0.7], suit: [0.75, 0.05], helmet: [0.25, 0.2], interior: [0.82, 0.05],
+  back: [0.92, 0], glass: [0.06, 0.4], low: [0.6, 0.3], carbon: [0.34, 0.3],
+};
+const tr = (k, ch = 0) => [RM[k][0], RM[k][1], ch];
+// pièces (carrosserie, ailerons) : matériau d'origine → apparence dans le lot des garnitures
+const PART_TRIM = {
+  blk: { trim: tr('blk') }, chrome: { tint: 0xeef0f3, trim: tr('chrome') }, mirror: { solid: 0xd6dde3, trim: tr('mirror') },
+  plastic: { solid: 0x121316, trim: tr('plastic') },
+};
+const DECAL_TRIM = {
+  lp: { trim: tr('lp') }, lens: { solid: 0xcfd6de, trim: [0.12, 0.85, CH.head] }, drl: { solid: 0xe8eef8, trim: [0.3, 0, CH.drl] },
+  led: { solid: 0x5a0007, trim: [0.15, 0.1, CH.tail] }, blk: { trim: tr('blk') },
+};
+const DECAL_TEX = ['grille', 'grille2', 'badge', 'plate'];
+
+function carBatches(C, spec, st, wingK, driver, showroom) {
+  const key = `${wingK}|${driver ? 1 : 0}|${showroom ? 1 : 0}`;
+  C.batches = C.batches || new Map();
+  let B = C.batches.get(key);
+  if (B) return B;
+  const W = wingGeos(C, spec, wingK);
+  const IT = interiorGeos(C, spec);
+  // Carrosserie peinte (livrée)
+  const paint = new Batch({ uv: true });
+  paint.add(C.body).add(C.cab.paint).add(W.paint);
+  // Carbone (textures)
+  const carbon = new Batch({ uv: true, color: false });
+  carbon.add(C.cab.special).add(W.carbon);
+  // Garnitures : vitrage de cadre, joints, feux, chromes, passages de roues, arceau, pilote
+  const trim = new Batch({ trim: true });
+  const chromeF = st.frame === 'chrome';
+  trim.add(C.cab.frames, chromeF ? { tint: 0xeef0f3, trim: tr('chrome') } : { trim: tr('blk') });
+  trim.add(C.cab.fabric, { solid: 0x151517, trim: tr('fabric') });
+  for (const [k, g] of Object.entries(C.decals.geos)) if (!DECAL_TEX.includes(k)) trim.add(g, DECAL_TRIM[k] || DECAL_TRIM.blk);
+  for (const [k, g] of Object.entries(C.parts)) {
+    if (k === 'paint') paint.add(g);
+    else if (k === 'carbon') carbon.add(g);
+    else trim.add(g, PART_TRIM[k] || PART_TRIM.blk);
+  }
+  trim.add(W.blk, PART_TRIM.blk);
+  // passages de roues (double face) ; en vitrine, maillage à part (masqué dans le reflet)
+  if (!showroom) {
+    trim.add(C.wells, { solid: 0x060607, trim: tr('well') });
+    trim.add(C.wells, { solid: 0x060607, trim: tr('well'), flip: true });
+  }
+  if (IT.geos.cage) trim.add(IT.geos.cage, { solid: 0x9a9da3, trim: tr('cage') });
+  if (driver) {
+    const D = driverGeos(C);
+    trim.add(D.suit, { solid: 0xffffff, trim: tr('suit', CH.suit) });
+    trim.add(D.helmet, { solid: 0xffffff, trim: tr('helmet', CH.helmet) });
+    trim.add(D.visor, { solid: 0x0b0d10, trim: tr('visor') });
+  }
+  // Niveau lointain : caisse simplifiée + garnitures et roues simplifiées en un seul lot
+  const paintLow = new Batch({ uv: true });
+  paintLow.add(C.bodyLow).add(C.cabLow.paint).add(W.paint);
+  const trimLow = new Batch({ trim: true });
+  trimLow.add(C.cabLow.glass, { solid: 0x0c1015, trim: tr('glass') });
+  trimLow.add(C.cabLow.fabric, { solid: 0x151517, trim: tr('fabric') });
+  for (const [k, g] of Object.entries(C.decalsLow.geos)) if (!DECAL_TEX.includes(k)) trimLow.add(g, DECAL_TRIM[k] || DECAL_TRIM.blk);
+  trimLow.add(C.lowWheels, { trim: tr('low') });
+  trimLow.add(W.blk, PART_TRIM.blk);
+  trimLow.add(W.carbon, { solid: 0x1a1a1c, trim: tr('carbon') });
+  // Proxy d'ombre portée (silhouette simplifiée, roues comprises)
+  const proxy = new Batch({ color: false });
+  proxy.add(C.bodyLow).add(C.cabLow.paint).add(W.paint).add(W.blk).add(W.carbon).add(C.lowWheels);
+  B = { paint: paint.build(), carbon: carbon.build(), trim: trim.build(), paintLow: paintLow.build(), trimLow: trimLow.build(), proxy: proxy.build() };
+  C.batches.set(key, B);
+  return B;
+}
+
+// Habitacle : garnissage + envers du pavillon (un lot), volant (+ gants)
+function interiorBatches(C, spec) {
+  if (C.intBatch) return C.intBatch;
+  const IT = interiorGeos(C, spec);
+  const b = new Batch({ trim: true });
+  for (const [k, g] of Object.entries(IT.geos)) {
+    if (k === 'interior') b.add(g, { tint: 0x1f2024, trim: tr('interior') });
+    else if (!['seat', 'gauge', 'cage'].includes(k)) b.add(g, { tint: 0x1f2024, trim: tr('interior') });
+  }
+  b.add(C.cab.paint, { solid: 0x17181b, trim: tr('back'), flip: true });
+  const sw = (gloves) => new Batch({ trim: true }).add(IT.wheel, { trim: tr('blk') }).add(gloves ? IT.gloves : null, { trim: tr('blk') }).build();
+  C.intBatch = { trim: b.build(), wheel: sw(false), wheelGloves: sw(true) };
+  return C.intBatch;
+}
+
+// Les quatre roues (pneu + disque, jante, étrier) dans un seul maillage à squelette : 8 os (rotation, braquage)
+function wheelSetGeometry(C, spec, rimStyle) {
+  C.wheelSets = C.wheelSets || new Map();
+  let g = C.wheelSets.get(rimStyle);
+  if (g) return g;
+  const R = spec.wheel.radius, w = spec.wheel.width, rr = rimRadius(spec.wheel);
+  const b = new Batch({ uv: true, skin: true, sel: true });
+  const M = new THREE.Matrix4(), S = new THREE.Matrix4();
+  for (let i = 0; i < 4; i++) {
+    const p = wheelRest(C.shape, spec, i);
+    M.makeTranslation(p.x, p.y, p.z);
+    if (i % 2 === 0) M.multiply(S.makeScale(-1, 1, 1));
+    b.add(tireDiscGeometry(R, w, i % 2 === 0, rr), { matrix: M, bone: i, sel: 0, white: true });
+    b.add(rimGeometry(R, w, rimStyle, rr), { matrix: M, bone: i, sel: 1 });
+    b.add(caliperGeometry(rr * 0.84, w), { matrix: M, bone: 4 + i, sel: 2, white: true });
+  }
+  g = b.build();
+  C.wheelSets.set(rimStyle, g);
+  return g;
+}
+// Roues simplifiées (distance moyenne) : cylindre de gomme + voile plein, mêmes os
+function wheelSetLowGeometry(C, spec) {
+  if (C.wheelSetLow) return C.wheelSetLow;
+  const R = spec.wheel.radius, w = spec.wheel.width, rr = rimRadius(spec.wheel);
+  const tire = new THREE.CylinderGeometry(R, R, w, 16, 1, false);
+  tire.rotateZ(Math.PI / 2);
+  const face = new THREE.CircleGeometry(rr * 0.97, 12);
+  face.rotateY(Math.PI / 2);
+  face.translate(w / 2 + 0.002, 0, 0);
+  const b = new Batch({ uv: true, skin: true, sel: true });
+  const M = new THREE.Matrix4(), S = new THREE.Matrix4();
+  for (let i = 0; i < 4; i++) {
+    const p = wheelRest(C.shape, spec, i);
+    M.makeTranslation(p.x, p.y, p.z);
+    if (i % 2 === 0) M.multiply(S.makeScale(-1, 1, 1));
+    b.add(tire, { matrix: M, bone: i, sel: 3, white: true });
+    b.add(face, { matrix: M, bone: i, sel: 1, solid: 0x9a9a9a });
+  }
+  C.wheelSetLow = b.build();
+  return C.wheelSetLow;
+}
+function wheelRest(shape, spec, i) {
+  return new THREE.Vector3((i % 2 === 0 ? -1 : 1) * spec.dims.track * 0.5, spec.wheel.radius, i < 2 ? shape.zAxleF : shape.zAxleR);
+}
+
+// ---------------------------------------------------------------------------
+// Niveaux de détail automatiques : le moteur de rendu appelle updateCarLods(caméra) avant chaque image.
+// Seuils en « mètres équivalents » à 60° de champ (la taille à l'écran compte, pas la distance brute).
+// ---------------------------------------------------------------------------
+const LIVE = new Set();
+const LOD_FAR = 55, LOD_DETAIL = 14, LOD_INTERIOR = 16, LOD_WHEELS = 22;
+const _cp = new THREE.Vector3();
+const TAN30 = Math.tan(Math.PI / 6);
+export function updateCarLods(camera) {
+  if (!LIVE.size) return;
+  if (camera.parent) _cp.setFromMatrixPosition(camera.matrixWorld); else _cp.copy(camera.position);
+  const fk = camera.isPerspectiveCamera ? Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2 / (camera.zoom || 1)) / TAN30 : 1;
+  for (const m of LIVE) m.autoLod(_cp, fk);
+}
+
+// ---------------------------------------------------------------------------
 export class CarModel {
   constructor(spec, opts = {}) {
     this.spec = spec;
@@ -352,108 +503,150 @@ export class CarModel {
     const shape = C.shape;
     this.shape = shape;
     this.liveryRes = opts.liveryRes || 1024;
+    this.showroom = !!opts.showroom;
 
     // Matériaux propres à cette voiture
     this.paint = new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.15 });
-    this.headMat = new THREE.MeshPhysicalMaterial({ color: 0xcfd6de, metalness: 0.85, roughness: 0.12, clearcoat: 1, emissive: 0xfff2dd, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
-    this.tailMat = new THREE.MeshPhysicalMaterial({ color: 0x5a0007, emissive: 0xff1a10, emissiveIntensity: 0.5, roughness: 0.15, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.05, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
-    this.rimMat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, metalness: 0.75, roughness: 0.24 });
-    this.caliperMat = new THREE.MeshStandardMaterial({ color: 0xb01515, metalness: 0.25, roughness: 0.35 });
+    this.trimMat = trimMaterial();
+    this.intMat = shared('intTrim', () => trimMaterial({ envMapIntensity: 0.35, polygonOffset: false }));
 
     this.lod0 = new THREE.Group();
     this.lod1 = new THREE.Group();
     this.body.add(this.lod0, this.lod1);
-    const add = (parent, geo, mat, cast = false, order = 0) => {
-      if (!geo) return null;
-      const m = new THREE.Mesh(geo, mat);
-      m.castShadow = cast;
-      m.receiveShadow = cast;
+    const mesh = (parent, geo, mat, order = 0) => {
+      const m = new THREE.Mesh(geo || EMPTY, mat);
+      m.receiveShadow = true;
       if (order) m.renderOrder = order;
+      m.visible = !!geo;
       parent.add(m);
       return m;
     };
-    // --- Caisse et habitacle ---
-    this.bodyMesh = add(this.lod0, C.body, this.paint, true);
-    this.cabMesh = add(this.lod0, C.cab.paint, this.paint, true);
-    add(this.lod0, C.cab.paint, M.interiorBack);
-    this.glassMeshes = [add(this.lod0, C.cab.glass, glassMaterial(0.35), false, 2)];
-    add(this.lod0, C.cab.special, M.carbon);
-    add(this.lod0, C.cab.fabric, M.fabric, true);
-    add(this.lod0, C.cab.frames, st.frame === 'chrome' ? M.chrome : M.blk, false, 1);
-    // --- Décalques ---
+    // --- Lots fusionnés (géométries affectées par setBatches) ---
+    this.bodyMesh = mesh(this.lod0, null, this.paint);
+    this.trimMesh = mesh(this.lod0, null, this.trimMat, 1);
+    this.carbonMesh = mesh(this.lod0, null, M.carbon);
+    this.paintLowMesh = mesh(this.lod1, null, this.paint);
+    this.trimLowMesh = mesh(this.lod1, null, this.trimMat, 1);
+    this.proxy = shadowProxy(null);
+    this.body.add(this.proxy);
+    // --- Vitrage (transparent de près, opaque quand l'habitacle n'est pas dessiné) ---
+    this.glassNear = glassMaterial(0.35);
+    this.glassMesh = mesh(this.lod0, C.cab.glass, this.glassNear, 2);
+    this.glassMesh.receiveShadow = false;
+    this.glassMeshes = [this.glassMesh];
+    // --- Décalques texturés (calandres, logos, plaques) : seulement de près ---
+    this.details = new THREE.Group();
+    this.lod0.add(this.details);
     this.plateMeshes = [];
-    const decalMat = (k) => ({
-      lp: M.lp, lens: this.headMat, drl: M.drl, led: this.tailMat, grille: M.grille,
-      grille2: st.grille === 'wide' ? M.grilleMesh : M.grilleBars, blk: M.blk, badge: M.badge, plate: plateMaterial('TR-998-AJ'),
-    })[k];
-    for (const [k, g] of Object.entries(C.decals.geos)) {
-      const m = add(this.lod0, g, decalMat(k), false, 1);
+    const decalMat = { grille: M.grille, grille2: st.grille === 'wide' ? M.grilleMesh : M.grilleBars, badge: M.badge, plate: plateMaterial('TR-998-AJ') };
+    for (const k of DECAL_TEX) {
+      const g = C.decals.geos[k];
+      if (!g) continue;
+      const m = mesh(this.details, g, decalMat[k], 1);
       if (k === 'plate') this.plateMeshes.push(m);
     }
-    // --- Pièces fixes ---
-    const partMat = { paint: this.paint, blk: M.blk, chrome: M.chrome, carbon: M.carbon, plastic: M.plastic, mirror: M.mirror };
-    for (const [k, g] of Object.entries(C.parts)) add(this.lod0, g, partMat[k] || M.blk, k === 'paint');
-    add(this.lod0, C.wells, M.well);
+    if (this.showroom) mesh(this.lod0, C.wells, M.well);
     // --- Roues ---
     this.wheels = [];
-    const wheelMat = wheelMaterial(DISC[spec.category] || 'drilled');
-    for (let i = 0; i < 4; i++) {
-      const front = i < 2, left = i % 2 === 0;
-      const wh = buildWheel(spec, left, { wheel: wheelMat, rim: this.rimMat, caliper: this.caliperMat, rimStyle: spec.wheel.rim });
-      wh.steer.position.set((left ? -1 : 1) * spec.dims.track * 0.5, spec.wheel.radius, front ? shape.zAxleF : shape.zAxleR);
-      wh.baseY = spec.wheel.radius;
-      this.body.add(wh.steer);
-      this.wheels.push(wh);
+    if (this.showroom) {
+      // vitrine : une roue = un groupe (reflet par clonage, pose statique)
+      this.rimMat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, metalness: 0.75, roughness: 0.24 });
+      this.caliperMat = new THREE.MeshStandardMaterial({ color: 0xb01515, metalness: 0.25, roughness: 0.35 });
+      const wheelMat = wheelMaterial(DISC[spec.category] || 'drilled');
+      for (let i = 0; i < 4; i++) {
+        const wh = buildWheel(spec, i % 2 === 0, { wheel: wheelMat, rim: this.rimMat, caliper: this.caliperMat, rimStyle: spec.wheel.rim });
+        wh.steer.position.copy(wheelRest(shape, spec, i));
+        wh.baseY = spec.wheel.radius;
+        this.lod0.add(wh.steer);
+        this.wheels.push(wh);
+      }
+    } else {
+      // course : un seul maillage à squelette pour les quatre roues
+      const atlas = wheelAtlasFor(spec);
+      this.wheelMat = wheelSetMaterial(atlas);
+      this.wheelGeoHi = wheelSetGeometry(C, spec, spec.wheel.rim || 'five');
+      this.wheelGeoLow = wheelSetLowGeometry(C, spec);
+      const ws = new THREE.SkinnedMesh(this.wheelGeoHi, this.wheelMat);
+      ws.receiveShadow = true;
+      const bones = [];
+      for (let i = 0; i < 8; i++) {
+        const b = new THREE.Bone();
+        b.position.copy(wheelRest(shape, spec, i % 4));
+        b.rotation.order = 'YXZ';
+        ws.add(b);
+        bones.push(b);
+      }
+      ws.updateMatrixWorld(true);
+      ws.bind(new THREE.Skeleton(bones), new THREE.Matrix4());
+      ws.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, spec.wheel.radius, (shape.zAxleF + shape.zAxleR) / 2),
+        Math.hypot(spec.dims.track / 2 + spec.wheel.width, (shape.zAxleR - shape.zAxleF) / 2 + spec.wheel.radius) + 0.2);
+      this.lod0.add(ws);
+      this.wheelSet = ws;
+      this.bones = bones;
+      for (let i = 0; i < 4; i++) this.wheels.push({ bone: bones[i], cal: bones[4 + i], baseY: spec.wheel.radius });
     }
     // --- Intérieur et volant ---
     const IT = interiorGeos(C, spec);
+    const IB = interiorBatches(C, spec);
     this.interior = new THREE.Group();
     this.lod0.add(this.interior);
+    mesh(this.interior, IB.trim, this.intMat);
     const seatMat = st.race ? M.seatRace : M.seat;
-    const itMat = { interior: M.interior, seat: seatMat, gauge: M.gauge, cage: M.cage };
-    for (const [k, g] of Object.entries(IT.geos)) add(this.interior, g, itMat[k] || M.interior);
+    if (IT.geos.seat) mesh(this.interior, IT.geos.seat, seatMat);
+    if (IT.geos.gauge) mesh(this.interior, IT.geos.gauge, M.gauge);
     const sw = new THREE.Group();
     sw.position.copy(IT.frame.wheel);
     sw.rotation.x = -0.42;
-    add(sw, IT.wheel, M.blk);
+    this.wheelMesh = mesh(sw, IB.wheel, this.intMat);
     this.interior.add(sw);
     this.steeringWheel = sw;
     this.driverEye = IT.frame.eye.clone();
-    // --- Pilote : en course par défaut, jamais en vitrine ---
-    if (opts.driver ?? !opts.showroom) this.buildDriver();
-    // --- Niveau de détail lointain ---
-    add(this.lod1, C.bodyLow, this.paint, true);
-    add(this.lod1, C.cabLow.paint, this.paint, true);
-    add(this.lod1, C.cabLow.glass, M.glassFar);
-    add(this.lod1, C.cabLow.fabric, M.fabric);
-    for (const [k, g] of Object.entries(C.decalsLow.geos)) add(this.lod1, g, decalMat(k), false, 1);
-    add(this.lod1, C.lowWheels, M.lowWheel, true);
-    // --- Aileron (commun aux deux niveaux) ---
+    // --- Aileron (fusionné dans les lots ; groupe conservé pour compatibilité) ---
     this.wingGroup = new THREE.Group();
     this.body.add(this.wingGroup);
 
+    this.driverOn = false;
     this.brake = 0;
     this.lightsOn = false;
     this.cur = null;
     this.applyCustom(opts.custom || null);
+    // Pilote : en course par défaut, jamais en vitrine
+    if (opts.driver ?? !opts.showroom) this.buildDriver();
+    this.setLights(false);
     this.lod = -1;
+    this.view = '';
     this.setLod(0);
+    LIVE.add(this);
+  }
+
+  // Affecte les géométries fusionnées selon l'aileron et la présence du pilote
+  setBatches() {
+    const B = carBatches(this.cache, this.spec, this.style, this.wingKind, this.driverOn, this.showroom);
+    const set = (m, g) => { m.geometry = g || EMPTY; m.visible = !!g; };
+    set(this.bodyMesh, B.paint);
+    set(this.trimMesh, B.trim);
+    set(this.carbonMesh, B.carbon);
+    set(this.paintLowMesh, B.paintLow);
+    set(this.trimLowMesh, B.trimLow);
+    set(this.proxy, B.proxy);
+    this.wheelMesh.geometry = this.driverOn ? this.cache.intBatch.wheelGloves : this.cache.intBatch.wheel;
   }
 
   buildDriver() {
-    if (this.driver) return;
-    const D = driverGeos(this.cache);
+    if (this.driverOn) return;
+    this.driverOn = true;
+    this.driver = this.trimMesh;
+    this.setBatches();
+    this.applyDriverColors();
+  }
+
+  applyDriverColors() {
     const cu = this.cur || effectiveCustom(this.spec, this.opts);
     const suitCol = cu.livery?.color && cu.livery.design !== 'none' ? cu.livery.color : cu.paint.color;
     const helmCol = cu.livery?.color2 || contrast(suitCol);
-    const g = new THREE.Group();
-    g.add(new THREE.Mesh(D.suit, suitMaterial(suitCol)));
-    g.add(new THREE.Mesh(D.helmet, helmetMaterial(helmCol)));
-    g.add(new THREE.Mesh(D.visor, this.mats.visor));
-    this.lod0.add(g);
-    this.driver = g;
-    const gl = new THREE.Mesh(interiorGeos(this.cache, this.spec).gloves, this.mats.blk);
-    this.steeringWheel.add(gl);
+    const U = this.trimMat.userData.u;
+    U.uSuit.value.set(suitCol);
+    U.uHelmet.value.set(helmCol);
   }
 
   // Applique une personnalisation complète (contrat C) sans reconstruire la voiture
@@ -467,40 +660,44 @@ export class CarModel {
     if (!prev || !same(prev.paint, cu.paint) || !same(prev.livery, cu.livery)) this.applyPaint(cu);
     // jantes
     if (!prev || prev.rims.style !== cu.rims.style) {
-      const g = rimGeometry(this.spec.wheel.radius, this.spec.wheel.width, cu.rims.style, rimRadius(this.spec.wheel));
-      for (const w of this.wheels) w.rim.geometry = g;
+      if (this.wheelSet) {
+        const lowNow = this.wheelSet.geometry === this.wheelGeoLow;
+        this.wheelGeoHi = wheelSetGeometry(this.cache, this.spec, cu.rims.style);
+        if (!lowNow) this.wheelSet.geometry = this.wheelGeoHi;
+      }
+      else {
+        const g = rimGeometry(this.spec.wheel.radius, this.spec.wheel.width, cu.rims.style, rimRadius(this.spec.wheel));
+        for (const w of this.wheels) w.rim.geometry = g;
+      }
     }
-    if (!prev || !same(prev.rims, cu.rims)) {
-      const f = RIM_FINISH[cu.rims.finish];
+    const f = RIM_FINISH[cu.rims.finish];
+    if (this.wheelSet) {
+      const U = this.wheelMat.userData.u;
+      U.uRim.value.set(cu.rims.color);
+      U.uRimRM.value.set(f.roughness, f.metalness);
+      U.uCal.value.set(cu.caliper);
+    } else {
       this.rimMat.color.set(cu.rims.color);
       this.rimMat.metalness = f.metalness;
       this.rimMat.roughness = f.roughness;
+      this.caliperMat.color.set(cu.caliper);
     }
-    this.caliperMat.color.set(cu.caliper);
     // vitres
-    if (!prev || prev.tint !== cu.tint) for (const m of this.glassMeshes) if (m) m.material = glassMaterial(cu.tint);
+    if (!prev || prev.tint !== cu.tint) {
+      const near = this.glassMesh.material === this.glassNear;
+      this.glassNear = glassMaterial(cu.tint);
+      if (near) this.glassMesh.material = this.glassNear;
+    }
     // plaques
     if (!prev || prev.plate !== cu.plate) for (const m of this.plateMeshes) m.material = plateMaterial(cu.plate);
     // aileron
     const kind = wingKind(this.style, this.spec, cu.wing);
     if (kind !== this.wingKind) {
       this.wingKind = kind;
-      this.wingGroup.clear();
-      const W = wingGeos(this.cache, this.spec, kind);
-      const mats = { paint: this.paint, carbon: this.mats.carbon, blk: this.mats.blk };
-      for (const [k, g] of Object.entries(W)) {
-        const m = new THREE.Mesh(g, mats[k] || this.mats.blk);
-        m.castShadow = true;
-        this.wingGroup.add(m);
-      }
+      this.setBatches();
     }
     // pilote : couleurs de combinaison / casque
-    if (this.driver && prev && !same(prev.livery, cu.livery)) {
-      this.lod0.remove(this.driver);
-      this.steeringWheel.remove(this.steeringWheel.children[this.steeringWheel.children.length - 1]);
-      this.driver = null;
-      this.buildDriver();
-    }
+    if (this.driverOn) this.applyDriverColors();
     return this;
   }
 
@@ -548,27 +745,54 @@ export class CarModel {
     this.applyCustom({ ...(this.custom || {}), livery: { design, color: o.stripe || '#ffffff', number: o.number ?? null, sponsors: o.sponsor !== null && o.sponsor !== undefined } });
   }
 
-  // Niveau de détail : 0 = complet, 1 = lointain
+  // Niveau de détail demandé : 0 = complet, 1 = lointain (affiné ensuite par autoLod selon la taille à l'écran)
   setLod(level) {
-    if (level === this.lod) return;
-    this.lod = level;
+    this.lodWanted = level;
     const far = level >= 1;
+    this.applyView(far, !far, !far && this.interiorWanted !== false);
+  }
+
+  // Choix automatique (appelé par le moteur de rendu) : k = distance équivalente à 60° de champ
+  autoLod(camPos, fk) {
+    const e = this.root.matrixWorld.elements;
+    const dx = e[12] - camPos.x, dy = e[13] - camPos.y, dz = e[14] - camPos.z;
+    const k = Math.sqrt(dx * dx + dy * dy + dz * dz) * fk;
+    const far = this.lod === 1 ? k > LOD_FAR * 0.94 : k > LOD_FAR;
+    this.applyView(far, k < LOD_DETAIL, k < LOD_INTERIOR && this.interiorWanted !== false);
+    if (this.wheelSet) {
+      const g = k > LOD_WHEELS ? this.wheelGeoLow : this.wheelGeoHi;
+      if (this.wheelSet.geometry !== g) this.wheelSet.geometry = g;
+    }
+  }
+
+  applyView(far, details, interior) {
+    const v = (far ? 4 : 0) + (details ? 2 : 0) + (interior ? 1 : 0);
+    // l'intérieur peut avoir été masqué de l'extérieur (raceScene) : on réimpose l'état voulu
+    if (v === this.view && this.interior.visible === interior) return;
+    this.view = v;
+    this.lod = far ? 1 : 0;
     this.lod0.visible = !far;
     this.lod1.visible = far;
-    for (const w of this.wheels) w.steer.visible = !far;
-    if (this.interior) this.interior.visible = !far && this.interiorWanted !== false;
+    this.details.visible = details;
+    this.interior.visible = interior;
+    this.glassMesh.material = interior ? this.glassNear : this.mats.glassFar;
   }
 
   setLights(on) {
     this.lightsOn = on;
-    this.headMat.emissiveIntensity = on ? 4 : 0.0;
-    this.tailMat.emissiveIntensity = (on ? 0.9 : 0.25) + this.brake * 3.2;
+    this.trimMat.userData.u.uHead.value.setHex(0xfff2dd).multiplyScalar(on ? 4 : 0);
+    this.trimMat.userData.u.uDrl.value.setHex(0xe4ecff).multiplyScalar(1.6);
+    this.updateTail();
   }
 
   setBrake(b) {
     if (Math.abs(b - this.brake) < 0.02) return;
     this.brake = b;
-    this.tailMat.emissiveIntensity = (this.lightsOn ? 0.9 : 0.25) + b * 3.2;
+    this.updateTail();
+  }
+
+  updateTail() {
+    this.trimMat.userData.u.uTail.value.setHex(0xff1a10).multiplyScalar((this.lightsOn ? 1.6 : 0.45) + this.brake * 3.2);
   }
 
   // Met à jour la pose à partir de l'état physique (ou d'un enregistrement de replay).
@@ -579,9 +803,17 @@ export class CarModel {
       const w = v.wheels[i];
       const m = this.wheels[i];
       const y = w.radius + w.Lstatic - w.L;
-      m.steer.position.y = y;
-      m.steer.rotation.y = -w.steer;
-      m.spin.rotation.x = -w.spin;
+      if (m.bone) {
+        m.bone.position.y = y;
+        m.bone.rotation.y = -w.steer;
+        m.bone.rotation.x = -w.spin;
+        m.cal.position.y = y;
+        m.cal.rotation.y = -w.steer;
+      } else {
+        m.steer.position.y = y;
+        m.steer.rotation.y = -w.steer;
+        m.spin.rotation.x = -w.spin;
+      }
     }
     if (this.steeringWheel) this.steeringWheel.rotation.z = -v.steerAngle * 12;
     this.setBrake(Math.min(1, Math.max(0, v.controls.brake * 1.2)));
@@ -591,31 +823,48 @@ export class CarModel {
   setStatic(steer = 0, spin = 0) {
     for (let i = 0; i < 4; i++) {
       const m = this.wheels[i];
-      m.steer.position.y = m.baseY;
-      m.steer.rotation.y = i < 2 ? -steer : 0;
-      m.spin.rotation.x = -spin;
+      const st = i < 2 ? -steer : 0;
+      if (m.bone) {
+        m.bone.position.y = m.cal.position.y = m.baseY;
+        m.bone.rotation.y = m.cal.rotation.y = st;
+        m.bone.rotation.x = -spin;
+      } else {
+        m.steer.position.y = m.baseY;
+        m.steer.rotation.y = st;
+        m.spin.rotation.x = -spin;
+      }
     }
   }
 
-  // Compte de triangles / objets visibles (outil de mesure)
+  // Compte de triangles / appels de dessin visibles (outil de mesure) ; shadows = appels de la passe d'ombre
   stats() {
-    let tris = 0, draws = 0;
+    let tris = 0, draws = 0, shadows = 0;
     this.root.traverseVisible((o) => {
       if (!o.isMesh) return;
+      if (o.userData.shadowProxy) { shadows++; return; }
       const g = o.geometry;
       const n = (g.index ? g.index.count : g.attributes.position.count) / 3;
       tris += n;
       draws += Array.isArray(o.material) ? g.groups.length : 1;
+      if (o.castShadow) shadows++;
     });
-    return { tris: Math.round(tris), draws };
+    return { tris: Math.round(tris), draws, shadows };
   }
 
   dispose() {
+    LIVE.delete(this);
     this.root.traverse((o) => {
       if (o.geometry && !o.geometry.__shared) o.geometry.dispose?.();
     });
+    this.wheelSet?.skeleton.dispose();
     if (this.liveryTex) releaseLivery(this.liveryTex);
     this.liveryTex = null;
-    for (const m of [this.paint, this.headMat, this.tailMat, this.rimMat, this.caliperMat]) m.dispose();
+    for (const m of [this.paint, this.trimMat, this.wheelMat, this.rimMat, this.caliperMat]) m?.dispose();
   }
+}
+
+const EMPTY = new THREE.BufferGeometry();
+EMPTY.__shared = true;
+function wheelAtlasFor(spec) {
+  return wheelAtlas(DISC[spec.category] || 'drilled');
 }

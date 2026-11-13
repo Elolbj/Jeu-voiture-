@@ -33,7 +33,7 @@ export class RaceScene {
   build() {
     const app = this.app;
     const cfg = this.cfg;
-    const world = new World(app.renderer, this.def, { time: cfg.time });
+    const world = new World(app.renderer, this.def, { time: cfg.time, weather: cfg.weather });
     this.world = world;
     this.track = world.track;
     const scene = world.scene;

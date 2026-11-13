@@ -77,24 +77,29 @@ export function asphalt() {
     const rough = canvas(N, N);
     const rctx = rough.getContext('2d');
     const rimg = rctx.createImageData(N, N);
+    // granulats : petits amas de 1 à 3 px (pierres claires ou sombres), liant plus ou moins présent
+    const stone = new Float32Array(N * N);
+    for (let i = 0; i < N * N * 0.05; i++) {
+      const cx = (r() * N) | 0, cy = (r() * N) | 0, sz = r() < 0.7 ? 1 : 2;
+      const v = r() < 0.7 ? 0.1 + r() * 0.14 : -0.06 - r() * 0.05;
+      for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) stone[((cy + dy) % N) * N + ((cx + dx) % N)] = v;
+    }
     for (let y = 0; y < N; y++) {
       for (let x = 0; x < N; x++) {
         const big = tileNoise(noise, x, y, N, N, 0.012);
         const mid = tileNoise(noise, x + 100, y + 50, N, N, 0.06);
         const grain = r() - 0.5;
-        let v = 0.25 + big * 0.035 + mid * 0.03 + grain * 0.09;
-        // granulats clairs
-        if (r() < 0.035) v += 0.12 + r() * 0.12;
-        if (r() < 0.02) v -= 0.08;
-        v = clamp(v, 0.05, 0.75);
-        h[y * N + x] = grain * 0.6 + (r() < 0.035 ? 0.8 : 0) + mid * 0.3;
+        const st = stone[y * N + x];
+        let v = 0.27 + big * 0.03 + mid * 0.025 + grain * 0.05 + st;
+        v = clamp(v, 0.06, 0.7);
+        h[y * N + x] = grain * 0.35 + (st > 0 ? 0.7 : st < 0 ? -0.3 : 0) + mid * 0.3;
         const k = (y * N + x) * 4;
         const base = v * 255;
-        img.data[k] = base * 0.98;
-        img.data[k + 1] = base * 0.99;
-        img.data[k + 2] = base * 1.03;
+        img.data[k] = base * 1.0;
+        img.data[k + 1] = base * 0.995;
+        img.data[k + 2] = base * 0.98;
         img.data[k + 3] = 255;
-        const ro = clamp(0.82 + big * 0.1 - mid * 0.05 + grain * 0.1, 0.55, 1) * 255;
+        const ro = clamp(0.84 + big * 0.08 - mid * 0.05 + grain * 0.08 - (st > 0 ? 0.08 : 0), 0.55, 1) * 255;
         rimg.data[k] = rimg.data[k + 1] = rimg.data[k + 2] = ro;
         rimg.data[k + 3] = 255;
       }
@@ -120,6 +125,71 @@ export function asphalt() {
       normalMap: tex(heightToNormal(h, N, N, 1.6), { srgb: false }),
       roughnessMap: tex(rough, { srgb: false }),
     };
+  });
+}
+
+// Variations à grande échelle de la chaussée (≈ 16 m × 64 m) : R = teinte (réparations, taches),
+// G = rugosité, B = creux où l'eau stagne (flaques par temps de pluie). Données linéaires.
+export function asphaltMacro() {
+  return cached('asphaltMacro', () => {
+    const W = 128, H = 512;
+    const noise = new Noise2D(23);
+    const r = rng(9);
+    const c = canvas(W, H);
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(W, H);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const a = tileNoise(noise, x * 4, y, W * 4, H, 0.02);
+        const b = tileNoise(noise, x * 4 + 300, y + 200, W * 4, H, 0.05);
+        const k = (y * W + x) * 4;
+        img.data[k] = clamp(128 + a * 26 + b * 10, 0, 255);
+        img.data[k + 1] = clamp(128 + b * 30, 0, 255);
+        img.data[k + 2] = clamp(70 + (a * 0.6 + b * 0.8) * 150, 0, 255);
+        img.data[k + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    // réparations : rectangles d'enrobé plus récent (plus sombre, plus lisse) ou plus ancien
+    for (let i = 0; i < 7; i++) {
+      const w = 12 + r() * 40, hh = 20 + r() * 90;
+      const x = r() * W, y = r() * H;
+      const dark = r() < 0.65;
+      ctx.fillStyle = dark ? `rgba(${92 + r() * 16},${100},${60},0.9)` : `rgba(${150 + r() * 12},${150},${90},0.85)`;
+      ctx.fillRect(x, y, w, hh);
+      ctx.fillRect(x - W, y, w, hh);
+    }
+    // joints de fissures colmatés (bitume brillant, sinueux)
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 9; i++) {
+      ctx.strokeStyle = 'rgba(70,70,40,0.85)';
+      ctx.lineWidth = 0.7 + r() * 0.8;
+      ctx.beginPath();
+      let x = r() * W, y = r() * H;
+      const along = r() < 0.6;
+      ctx.moveTo(x, y);
+      for (let k = 0; k < 14; k++) {
+        x += along ? (r() - 0.5) * 6 : 4 + r() * 4;
+        y += along ? 6 + r() * 8 : (r() - 0.5) * 6;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    // taches d'huile / de gomme
+    for (let i = 0; i < 14; i++) {
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+      g.addColorStop(0, 'rgba(85,95,70,0.5)');
+      g.addColorStop(1, 'rgba(85,95,70,0)');
+      ctx.save();
+      ctx.translate(r() * W, r() * H);
+      ctx.scale(2 + r() * 5, 3 + r() * 8);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, 0, 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    return tex(c, { srgb: false });
   });
 }
 
