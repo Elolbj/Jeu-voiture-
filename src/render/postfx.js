@@ -56,31 +56,31 @@ uniform float uExposure, uVignette, uSpeed, uDrops, uTime, uAspect, uSat, uContr
 uniform vec3 uLift;
 varying vec2 vUv;
 ${ADAPT_GLSL}
-vec3 RRTAndODTFit(vec3 v) {
+vec3 gradeRRT(vec3 v) {
   vec3 a = v * (v + 0.0245786) - 0.000090537;
   vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;
   return a / b;
 }
-vec3 aces(vec3 c) {
+vec3 gradeAces(vec3 c) {
   const mat3 I = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));
   const mat3 O = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));
-  return clamp(O * RRTAndODTFit(I * c), 0.0, 1.0);
+  return clamp(O * gradeRRT(I * c), 0.0, 1.0);
 }
-vec3 toSRGB(vec3 c) {
+vec3 gradeSRGB(vec3 c) {
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
 }
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float gradeHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 // Gouttes sur l'objectif : cellules pseudo-aléatoires, chaque goutte vit puis sèche
-vec2 drops(vec2 uv, float t) {
+vec2 gradeDrops(vec2 uv, float t) {
   vec2 off = vec2(0.0);
   for (int l = 0; l < 2; l++) {
     float sc = l == 0 ? 7.0 : 13.0;
     vec2 p = vec2(uv.x * uAspect, uv.y) * sc;
     vec2 id = floor(p);
     vec2 f = fract(p) - 0.5;
-    float h = hash(id + float(l) * 17.0);
+    float h = gradeHash(id + float(l) * 17.0);
     float life = fract(t * (0.12 + 0.1 * h) + h);
-    vec2 c = vec2(hash(id + 3.1) - 0.5, hash(id + 5.7) - 0.5) * 0.6;
+    vec2 c = vec2(gradeHash(id + 3.1) - 0.5, gradeHash(id + 5.7) - 0.5) * 0.6;
     c.y -= life * 0.15;
     vec2 d = f - c;
     float r = (0.18 + 0.12 * h) * (1.0 - life * 0.6);
@@ -93,7 +93,7 @@ void main() {
   vec2 uv = vUv;
   vec2 dc = uv - 0.5;
   float r2 = dot(dc * vec2(uAspect, 1.0), dc * vec2(uAspect, 1.0));
-  if (uDrops > 0.01) uv -= drops(vUv, uTime) * uDrops;
+  if (uDrops > 0.01) uv -= gradeDrops(vUv, uTime) * uDrops;
   vec3 col = texture2D(tDiffuse, uv).rgb;
   // effet de vitesse : léger flou radial sur les bords de l'image
   if (uSpeed > 0.01) {
@@ -103,15 +103,15 @@ void main() {
     col = acc / 5.0;
   }
   col *= uExposure * adaptFactor();
-  col = aces(col);
+  col = gradeAces(col);
   // étalonnage léger : contraste autour du gris moyen, saturation, teinte des ombres
   col = mix(vec3(0.18), col, uContrast) + uLift * (1.0 - col);
   float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
   col = max(mix(vec3(l), col, uSat), 0.0);
   // vignettage discret
   col *= 1.0 - uVignette * smoothstep(0.25, 1.1, r2);
-  col = toSRGB(clamp(col, 0.0, 1.0));
-  col += (hash(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) / 255.0;
+  col = gradeSRGB(clamp(col, 0.0, 1.0));
+  col += (gradeHash(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) / 255.0;
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -153,7 +153,7 @@ export class GradePass extends Pass {
       tDiffuse: { value: null }, uExposure: { value: 1 }, uVignette: { value: 0.22 }, uSpeed: { value: 0 }, uDrops: { value: 0 },
       uTime: { value: 0 }, uAspect: { value: 16 / 9 }, uSat: { value: 1.06 }, uContrast: { value: 1.04 }, uLift: { value: new THREE.Vector3(0.004, 0.006, 0.012) },
     };
-    this.quad = new FullScreenQuad(new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: VS, fragmentShader: GRADE_FS, depthTest: false, depthWrite: false }));
+    this.quad = new FullScreenQuad(new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: VS, fragmentShader: GRADE_FS, depthTest: false, depthWrite: false, toneMapped: false }));
     this.adaptive = true;
     this.speed = 0;
     this.drops = 0;
