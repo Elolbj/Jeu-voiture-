@@ -6,11 +6,11 @@ import { TRACKS } from '../src/data/tracks.js';
 
 const outDir = path.resolve('tools/scratch');
 fs.mkdirSync(outDir, { recursive: true });
-const only = process.argv[2];
+const only = process.argv[2] ? new Set(process.argv[2].split(',')) : null;
 
 const svgs = [];
 for (const def of TRACKS) {
-  if (only && def.id !== only) continue;
+  if (only && !only.has(def.id)) continue;
   const t = new Track(def);
   const st = t.stats();
   console.log(def.id, JSON.stringify(st));

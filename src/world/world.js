@@ -29,7 +29,7 @@ export class World {
     this.scene = scene;
     const time = opts.time || def.time || 'day';
     this.time = time;
-    const groundCol = { countryside: 0x4d5a2c, coast: 0x6b6648, mountain: 0x46503a, city: 0x2a2a2e, gp: 0x4a5a2c }[def.theme];
+    const groundCol = { countryside: 0x4d5a2c, coast: 0x6b6648, mountain: 0x46503a, city: 0x2a2a2e, gp: 0x4a5a2c, desert: 0x9a7a52, forest: 0x3a4a26, citynight: 0x1e1e24, oval: 0x4d5e2c, snow: 0xc9ced8 }[def.theme];
     this.env = new Environment(renderer, scene, time, { groundColor: groundCol });
     const tm = buildTrackMeshes(track, { line });
     scene.add(tm.group);

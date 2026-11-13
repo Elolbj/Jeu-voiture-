@@ -1,66 +1,22 @@
 // Décor par thème : végétation, bâtiments, tribunes, stands, mer, port, éclairage urbain,
-// panneaux publicitaires, rochers…
+// panneaux publicitaires, rochers… Les thèmes récents ont leur propre module (./themes/).
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, clamp, lerp, smoothstep } from '../core/utils.js';
 import { Noise2D } from '../core/noise.js';
 import * as TX from './textures.js';
 import { InstancedForest, cullForest } from './vegetation.js';
 import { surfaceY } from './trackMesh.js';
+import { MergeBin, boxWorldUV, mat } from './themes/common.js';
+import { buildDesert } from './themes/desert.js';
+import { buildForest } from './themes/forest.js';
+import { buildCityNight } from './themes/citynight.js';
+import { buildOval } from './themes/oval.js';
+import { buildSnow } from './themes/snow.js';
 
-// Regroupe les géométries statiques par matériau pour limiter les appels de rendu
-class MergeBin {
-  constructor() {
-    this.bins = new Map();
-  }
-  add(key, material, geometry, matrix) {
-    if (!this.bins.has(key)) this.bins.set(key, { material, geos: [] });
-    const g = geometry.index ? geometry.toNonIndexed() : geometry.clone();
-    if (matrix) g.applyMatrix4(matrix);
-    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
-    if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
-    this.bins.get(key).geos.push(g);
-  }
-  flush(group, { cast = true, receive = true } = {}) {
-    for (const { material, geos } of this.bins.values()) {
-      if (!geos.length) continue;
-      const merged = mergeGeometries(geos, false);
-      const m = new THREE.Mesh(merged, material);
-      m.castShadow = cast;
-      m.receiveShadow = receive;
-      group.add(m);
-    }
-    this.bins.clear();
-  }
-}
-
-// Boîte avec UV en mètres (textures répétées à l'échelle)
-function boxWorldUV(w, h, d, uScale = 8, vScale = 8) {
-  const g = new THREE.BoxGeometry(w, h, d);
-  const uv = g.attributes.uv;
-  const pos = g.attributes.position;
-  const nrm = g.attributes.normal;
-  for (let i = 0; i < uv.count; i++) {
-    const nx = Math.abs(nrm.getX(i)), ny = Math.abs(nrm.getY(i));
-    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    if (ny > 0.5) uv.setXY(i, x / uScale, z / uScale);
-    else if (nx > 0.5) uv.setXY(i, (z + d / 2) / uScale, (y + h / 2) / vScale);
-    else uv.setXY(i, (x + w / 2) / uScale, (y + h / 2) / vScale);
-  }
-  return g;
-}
-
-const _m = new THREE.Matrix4();
-const _q = new THREE.Quaternion();
-const _v = new THREE.Vector3();
-const _s = new THREE.Vector3(1, 1, 1);
-const UP = new THREE.Vector3(0, 1, 0);
-function mat(x, y, z, rotY = 0, sx = 1, sy = 1, sz = 1) {
-  _q.setFromAxisAngle(UP, rotY);
-  _v.set(x, y, z);
-  _s.set(sx, sy, sz);
-  return _m.clone().compose(_v, _q, _s);
-}
+// Thèmes récents : décor complet (zone de départ comprise) dans leur module
+const THEME_BUILDERS = { desert: buildDesert, forest: buildForest, citynight: buildCityNight, oval: buildOval, snow: buildSnow };
+// Distance d'affichage de la végétation par thème
+const TREE_FAR = { mountain: 1400, snow: 1500, forest: 1100, desert: 1200 };
 
 export class Scenery {
   constructor(scene, track, terrain, env, quality) {
@@ -107,15 +63,17 @@ export class Scenery {
   }
 
   build() {
+    const custom = THEME_BUILDERS[this.theme];
     switch (this.theme) {
       case 'countryside': this.buildCountryside(); break;
       case 'coast': this.buildCoast(); break;
       case 'mountain': this.buildMountain(); break;
       case 'city': this.buildCity(); break;
       case 'gp': this.buildGP(); break;
+      default: if (custom) custom(this);
     }
-    if (this.track.closed && this.theme !== 'city') this.buildStartArea();
-    this.buildBillboards();
+    if (this.track.closed && this.theme !== 'city' && !custom) this.buildStartArea();
+    if (!custom) this.buildBillboards();
     this.bin.flush(this.group);
   }
 
@@ -223,6 +181,8 @@ export class Scenery {
 
   forest(Cls, seed) {
     const f = new Cls(this.group, seed);
+    // distance de passage à la version simplifiée réduite en qualité moyenne / basse
+    f.lodScale = clamp(this.quality.trees, 0.5, 1);
     this.forests = this.forests || [];
     this.forests.push(f);
     return f;
@@ -456,7 +416,8 @@ export class Scenery {
     this.buildNeons(placed);
   }
 
-  buildStreetLights() {
+  // Lampadaires en quinconce et flaques de lumière (step : écart sur un même côté / 2, R : rayon)
+  buildStreetLights({ step: stepM = 26, R = 9, color = 'rgba(255,200,130,0.55)', key = 'pool' } = {}) {
     const t = this.track;
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x3a3d42, metalness: 0.6, roughness: 0.5 });
     const lampMat = new THREE.MeshStandardMaterial({ color: 0xffe6c0, emissive: 0xffd9a0, emissiveIntensity: 6 });
@@ -464,7 +425,7 @@ export class Scenery {
     const arm = new THREE.BoxGeometry(0.12, 0.12, 2.6);
     const head = new THREE.BoxGeometry(0.5, 0.15, 0.9);
     const poolPos = [], poolUV = [], poolIdx = [];
-    const step = Math.max(1, Math.round(26 / t.spacing));
+    const step = Math.max(1, Math.round(stepM / t.spacing));
     let n = 0;
     for (let i = 0; i < t.count; i += step) {
       for (const side of [-1, 1]) {
@@ -483,7 +444,6 @@ export class Scenery {
         // flaque lumineuse au sol
         const cx = x - rx * side * 4.5, cz = z - rz * side * 4.5;
         const cy = surfaceY(t, i, side * Math.max(0, wall - 4.5)) + 0.04;
-        const R = 9;
         poolPos.push(cx - R, cy, cz - R, cx + R, cy, cz - R, cx + R, cy, cz + R, cx - R, cy, cz + R);
         poolUV.push(0, 0, 1, 0, 1, 1, 0, 1);
         poolIdx.push(n, n + 2, n + 1, n, n + 3, n + 2);
@@ -495,7 +455,7 @@ export class Scenery {
     g.setAttribute('uv', new THREE.Float32BufferAttribute(poolUV, 2));
     g.setIndex(poolIdx);
     const poolMat = new THREE.MeshBasicMaterial({
-      map: TX.radialSprite('pool', 'rgba(255,200,130,0.55)', 'rgba(255,170,90,0)', 128),
+      map: TX.radialSprite(key, color, color.replace(/[\d.]+\)$/, '0)'), 128),
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -679,13 +639,15 @@ export class Scenery {
 
   update(dt, cam) {
     if (cam && this.forests) {
-      const far = this.theme === 'mountain' ? 1400 : 950;
+      const far = TREE_FAR[this.theme] ?? 950;
       for (const f of this.forests) cullForest(f, cam, far);
     }
     if (this.water) {
       this.water.map.offset.x += dt * 0.004;
       this.water.map.offset.y += dt * 0.0025;
     }
+    // Animations propres aux thèmes (néons, projecteurs, remontées mécaniques…)
+    for (let k = 0; k < this.animated.length; k++) this.animated[k](dt, cam);
   }
 }
 
