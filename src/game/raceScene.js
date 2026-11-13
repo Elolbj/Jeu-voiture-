@@ -47,7 +47,7 @@ export class RaceScene {
     const entries = [];
     const opp = cfg.opponents || [];
     opp.forEach((o, i) => entries.push({
-      name: o.name, short: o.short, spec: o.spec, color: o.color, custom: o.custom || null, seed: o.seed ?? (i + 1) * 7919,
+      id: o.id ?? null, name: o.name, short: o.short, spec: o.spec, color: o.color, custom: o.custom || null, seed: o.seed ?? (i + 1) * 7919,
       ai: { skill: o.skill * settings.difficultyMul, aggression: o.aggression ?? 0.5, lineBias: o.lineBias ?? 0, seed: o.seed ?? (i + 1) * 7919 },
     }));
     const playerEntry = {
@@ -571,6 +571,7 @@ export class RaceScene {
     const winnerT = order[0].finishTime;
     const standings = order.map((c, i) => ({
       position: i + 1,
+      id: c.driverId,
       name: c.name,
       car: `${c.spec.brand} ${c.spec.model}`,
       color: c.color,

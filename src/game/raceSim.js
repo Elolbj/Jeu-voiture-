@@ -47,6 +47,7 @@ export class RaceSim {
       const car = {
         id: idx,
         name: e.name,
+        driverId: e.id ?? (e.player ? 'player' : null),
         team: e.team || '',
         isPlayer: !!e.player,
         vehicle: veh,

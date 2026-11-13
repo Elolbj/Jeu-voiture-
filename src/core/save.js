@@ -29,6 +29,7 @@ export function newProfile(name = 'Pilote') {
     story: { started: false, chapter: 0, done: {}, seen: {}, finished: false },
     licences: {},
     stats: { races: 0, wins: 0, podiums: 0, distance: 0, earned: 0 },
+    championships: {}, // état des championnats (format décrit dans src/game/championship.js)
     settings: structuredClone(DEFAULT_SETTINGS),
     created: Date.now(),
   };
@@ -51,6 +52,8 @@ export function loadProfile() {
     p.story = { started: false, chapter: 0, done: {}, seen: {}, finished: false, ...(p.story || {}) };
     p.licences = p.licences || {};
     p.stats = { races: 0, wins: 0, podiums: 0, distance: 0, earned: 0, ...(p.stats || {}) };
+    // Migration : profils antérieurs aux championnats
+    if (!p.championships || typeof p.championships !== 'object') p.championships = {};
     return p;
   } catch (e) {
     console.warn('Sauvegarde illisible', e);
