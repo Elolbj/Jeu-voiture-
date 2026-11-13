@@ -243,7 +243,7 @@ export function showQuickRace(app) {
       laps: TRACK_BY_ID[st.track].closed === false ? 1 : st.laps,
       mode: 'race',
       title: 'Course rapide',
-      player: { spec, color: owned?.color || CAR_BY_ID[st.carId].paints[0], name: p.name },
+      player: { spec, color: owned?.color || CAR_BY_ID[st.carId].paints[0], name: p.name, custom: owned?.custom },
       opponents,
       playerGrid: Math.floor(opponents.length / 2),
     }, null);

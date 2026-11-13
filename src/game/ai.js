@@ -176,7 +176,7 @@ export class AIDriver {
     ctl.handbrake = 0;
 
     // --- Récupération ---
-    if (raceTime > 3) {
+    if (raceTime > 3 && !(this.car?.finished && !t.closed)) {
       if (speed < 2) this.stuckTime += dt; else this.stuckTime = Math.max(0, this.stuckTime - dt * 2);
       if (off) this.offTime += dt; else this.offTime = 0;
       const trackHeading = Math.atan2(t.dx[p.index], -t.dz[p.index]);
@@ -241,17 +241,17 @@ export class AIDriver {
       return;
     }
     this.farCorner = cD;
-    // Repère du virage : son entrée (pour un virage en cours, le point d'entrée déjà franchi)
-    let entry = s + cD;
-    if (cD === 0) {
-      let back = 0;
-      while (back < 400 && Math.abs(t.kappa[t.indexAt(s - back - 4)]) > CORNER_K && Math.sign(t.kappa[t.indexAt(s - back - 4)]) === Math.sign(cS)) back += 4;
-      entry = s - back;
+    // Repère du virage : l'indice exact de son entrée (stable d'une image à l'autre)
+    let ei = t.indexAt(s + cD);
+    const sg = Math.sign(t.kappa[ei]);
+    for (let k = 0; k < 300; k++) {
+      const pi = t.idx(ei - 1);
+      if (pi === ei || Math.abs(t.kappa[pi]) <= CORNER_K || Math.sign(t.kappa[pi]) !== sg) break;
+      ei = pi;
     }
-    if (t.closed) entry = ((entry % L) + L) % L;
     this.cornerDist = cD;
     this.cornerSign = cS >= 0 ? 1 : -1;
-    this.cornerId = Math.round(entry / 20);
+    this.cornerId = ei;
   }
 
   perceive(cars, speed) {
@@ -266,6 +266,7 @@ export class AIDriver {
     this.side = null; this.sideDs = 0;
     this.nearTraffic = false;
     this.trafficBack = false;
+    this.closeTraffic = false;
     let sideLat = 1e9;
     for (let k = 0; k < cars.length; k++) {
       const c = cars[k];
@@ -278,6 +279,7 @@ export class AIDriver {
       const len = myHalf + c.vehicle.halfLength;
       if (Math.abs(ds) < 30 && adl < 9) this.nearTraffic = true;
       if (ds > -35 && ds < 10) this.trafficBack = true;
+      if (ds > -15 && ds < 20 && adl < 6) this.closeTraffic = true;
       // Côte à côte : on laisse l'espace d'une voiture
       if ((Math.abs(ds) < len + 0.8 && adl > 1.0) || Math.abs(ds) < len * 0.7) {
         if (adl < SIDE_GAP + 2) {
@@ -430,6 +432,12 @@ export class AIDriver {
     if (vt >= this.vTop * 0.985) vt = this.vTop * 1.3;
     else vt *= this.pace * this.speedScale;
     if (this.mistake === 'lift') vt *= 1 - this.mistakeSev * 0.25;
+    // Tracé ouvert : arrêt dans la zone de dégagement après l'arrivée
+    if (!t.closed) {
+      // chaque arrivant s'arrête un peu avant le précédent
+      const stopS = t.length + 40 - ((this.car?.finishOrder || 1) - 1) * 9;
+      vt = Math.min(vt, Math.sqrt(2 * this.decel * Math.max(0, stopS - s)));
+    }
     // Hors de la trajectoire idéale en virage : vitesse de passage réduite
     const devPlan = Math.abs(latT - lineT);
     const cornering = this.braking || this.cornerDist < 30;
@@ -490,7 +498,7 @@ export class AIDriver {
     }
     this.mistakeTimer -= dt;
     if (this.mistakeTimer > 0) return;
-    if (this.nearTraffic || raceTime < 15 || this.cornerId < 0 || this.braking || this.cornerDist < 60) {
+    if (this.closeTraffic || raceTime < 15 || this.cornerId < 0 || this.braking || this.cornerDist < 60) {
       this.mistakeTimer = 2;
       return;
     }
