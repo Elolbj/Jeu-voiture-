@@ -130,7 +130,7 @@ export class CameraRig {
       cam.position.copy(this.pos);
       this.look.copy(v.position).addScaledVector(dir, lookBack ? -4 : 4);
       // regarde légèrement vers l'intérieur du virage (accélération latérale), sans à-coups
-      const lat = clamp(-acc.x * 0.035, -0.6, 0.6);
+      const lat = clamp(acc.x * 0.035, -0.6, 0.6);
       this.look.x += dir.z * -lat;
       this.look.z += dir.x * lat;
       this.look.y = v.position.y + (far ? 0.9 : 0.75);
