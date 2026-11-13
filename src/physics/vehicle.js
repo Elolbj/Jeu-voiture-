@@ -173,6 +173,9 @@ export class Vehicle {
     this.dragK = 0.5 * RHO * aero.cd * aero.area;
     this.downF = 0.5 * RHO * aero.clF;
     this.downR = 0.5 * RHO * aero.clR;
+    // Multiplicateurs pilotés par la course : adhérence de la piste (pluie) et traînée (aspiration)
+    this.gripMul = 1;
+    this.dragMul = 1;
 
     // État
     this.position = new Vector3();
@@ -312,7 +315,9 @@ export class Vehicle {
     const rpm = this.wheelRpmFor(this.gear, drivenOmega);
     // Ne pas changer en plein patinage massif
     const upRpm = thr > 0.6 ? this.redline * 0.985 : lerp(this.redline * 0.55, this.redline * 0.9, thr / 0.6);
-    if (this.gear < n && rpm > upRpm && this.time - this.lastShiftUp > 0.6) {
+    // Rapport supérieur aussi quand le limiteur coupe pied au plancher (patinage, régime réel > estimé)
+    const onLimiter = this.limiterCut && thr > 0.6;
+    if (this.gear < n && (rpm > upRpm || onLimiter) && this.time - this.lastShiftUp > 0.6) {
       const next = this.wheelRpmFor(this.gear + 1, drivenOmega);
       if (next > this.idle * 1.15) this.shiftUp();
       return;
@@ -423,7 +428,7 @@ export class Vehicle {
       if (!wh.contact) { wh.Fmax = 0; continue; }
       const Fz = Math.min(wh.Fz, wh.Fz0 * 3.5);
       const loadMu = clamp(1 - tireM.loadSens * (Fz / wh.Fz0 - 1), 0.7, 1.12);
-      wh.mu = tireM.mu * wh.surface.mu * loadMu;
+      wh.mu = tireM.mu * wh.surface.mu * loadMu * this.gripMul;
       wh.Fmax = wh.mu * Fz;
     }
 
@@ -638,7 +643,7 @@ export class Vehicle {
     const v2 = vel.lengthSq();
     if (v2 > 0.01) {
       const vmag = Math.sqrt(v2);
-      F.addScaledVector(vel, -this.dragK * vmag);
+      F.addScaledVector(vel, -this.dragK * this.dragMul * vmag);
       // Traînée des surfaces meubles (herbe, graviers)
       if (surfDrag > 0) F.addScaledVector(vel, -surfDrag * m * 0.35 / Math.max(vmag, 3));
       const vf2 = this.speed * this.speed;
