@@ -1,17 +1,17 @@
 // Scène de course : assemble monde, simulation, modèles, caméras, HUD, audio, effets,
-// enregistrement du ralenti, épreuves de permis et contre-la-montre.
+// enregistrement du ralenti, épreuves de permis et contre-la-montre, météo (sec / pluie).
 import * as THREE from 'three';
 import { World } from '../world/world.js';
 import { TRACK_BY_ID } from '../data/tracks.js';
 import { RaceSim } from './raceSim.js';
-import { AIDriver } from './ai.js';
-import { CarModel } from '../render/carModel.js';
+import { wetLine } from './racingLine.js';
+import { CarModel, randomCustom } from '../render/carModel.js';
 import { CameraRig, CAM_LABEL } from './cameras.js';
 import { HUD } from './hud.js';
 import { CarEffects } from '../render/effects.js';
 import { ReplayRecorder, ReplayPlayer } from './replay.js';
 import { EngineSound, CarAmbience, sfxImpact, sfxShift, beep, audioCtx } from '../core/audio.js';
-import { clamp, formatTime, lerp } from '../core/utils.js';
+import { clamp, formatTime, lerp, rng } from '../core/utils.js';
 import { TIRES } from '../data/cars.js';
 
 const _v = new THREE.Vector3();
@@ -27,15 +27,18 @@ export class RaceScene {
     this.timeScale = 1;
     this.outroTime = 0;
     this.licence = cfg.licence || null;
+    this.weather = cfg.weather === 'pluie' ? 'pluie' : 'sec';
     this.result = null;
   }
 
   build() {
     const app = this.app;
     const cfg = this.cfg;
-    const world = new World(app.renderer, this.def, { time: cfg.time });
+    const world = new World(app.renderer, this.def, { time: cfg.time, weather: this.weather });
     this.world = world;
     this.track = world.track;
+    // Sous la pluie, l'IA suit une trajectoire avec plus de marge
+    this.line = this.weather === 'pluie' ? wetLine(this.track) : world.line;
     const scene = world.scene;
     this.scene = scene;
     const settings = app.settings;
@@ -43,19 +46,25 @@ export class RaceScene {
     // ------------------------------------------------ Participants
     const entries = [];
     const opp = cfg.opponents || [];
-    opp.forEach((o) => entries.push({ name: o.name, short: o.short, spec: o.spec, color: o.color, ai: { skill: o.skill * settings.difficultyMul, aggression: o.aggression ?? 0.5, lineBias: o.lineBias ?? 0 } }));
+    opp.forEach((o, i) => entries.push({
+      name: o.name, short: o.short, spec: o.spec, color: o.color, custom: o.custom || null, seed: o.seed ?? (i + 1) * 7919,
+      ai: { skill: o.skill * settings.difficultyMul, aggression: o.aggression ?? 0.5, lineBias: o.lineBias ?? 0, seed: o.seed ?? (i + 1) * 7919 },
+    }));
     const playerEntry = {
       name: cfg.player.name || 'Vous',
       short: cfg.player.short || 'VOUS',
       spec: cfg.player.spec,
       color: cfg.player.color,
+      custom: cfg.player.custom || null,
       player: true,
       assists: { ...settings.assists },
     };
     const gp = clamp(cfg.playerGrid ?? entries.length, 0, entries.length);
     entries.splice(gp, 0, playerEntry);
     const mode = cfg.mode || 'race';
-    const sim = new RaceSim(this.track, entries, { laps: cfg.laps ?? 3, mode: mode === 'race' ? 'race' : mode === 'free' ? 'free' : 'race', line: world.line });
+    const sim = new RaceSim(this.track, entries, {
+      laps: cfg.laps ?? 3, mode: mode === 'race' ? 'race' : mode === 'free' ? 'free' : 'race', line: this.line, weather: this.weather,
+    });
     sim.cars.forEach((c, i) => {
       c.short = entries[i].short || c.name.slice(0, 3).toUpperCase();
       c.color = entries[i].color;
@@ -64,8 +73,7 @@ export class RaceScene {
     sim.maxFrame = app.maxDt;
     if (cfg.autopilot) {
       const pc = sim.player;
-      pc.ai = new AIDriver(pc.vehicle, this.track, world.line, { skill: 0.9 });
-      pc.ai.car = pc;
+      pc.ai = sim.makeAI(pc, { skill: 0.9 });
       this.autopilot = true;
     }
     this.player = sim.player;
@@ -85,11 +93,14 @@ export class RaceScene {
     }
 
     // ------------------------------------------------ Modèles 3D
+    const customs = this.buildCustoms(entries);
     this.models = sim.cars.map((c, i) => {
+      const { custom, number } = customs[i];
       const m = new CarModel(c.spec, {
         color: c.color,
-        number: c.spec.livery ? (i + 3) * 7 % 99 : undefined,
-        sponsor: c.spec.livery ? i : undefined,
+        custom: custom || undefined,
+        number,
+        sponsor: c.spec.livery || custom?.livery?.sponsors ? i : undefined,
       });
       if (world.env.night) m.setLights(true);
       scene.add(m.root);
@@ -111,7 +122,7 @@ export class RaceScene {
     // ------------------------------------------------ Caméra, HUD, effets
     this.rig = new CameraRig(this.track);
     this.rig.mode = settings.camera || 'chase';
-    this.hud = new HUD(app.uiRoot, this.track);
+    this.hud = new HUD(app.uiRoot, this.track, { championship: cfg.championship || null, weather: this.weather });
     this.effects = new CarEffects(scene, app.renderer);
     this.recorder = new ReplayRecorder(sim.cars.length);
 
@@ -135,6 +146,40 @@ export class RaceScene {
     this.hud.sub(`${this.def.name} · ${lapsTxt}`, 3.2);
     this.hud.setVisible(true);
     world.update(0, this.player.vehicle.position);
+  }
+
+  // Personnalisation de chaque voiture : celle fournie (joueur, adversaire) ou une livrée
+  // plausible tirée au sort ; numéros de course tous différents.
+  buildCustoms(entries) {
+    const used = new Set();
+    const r = rng(this.track.length * 7 + entries.length * 131);
+    const out = entries.map((e) => {
+      if (e.player) return e.custom || null;
+      return e.custom || randomCustom(e.spec, e.seed || 1, e.color);
+    });
+    // le numéro du joueur (s'il en a un) est réservé en premier
+    entries.forEach((e, i) => { if (e.player && out[i]?.livery?.number) used.add(out[i].livery.number); });
+    const free = () => {
+      let n;
+      do n = r.int(2, 99); while (used.has(n) && used.size < 97);
+      used.add(n);
+      return n;
+    };
+    return out.map((cu, i) => {
+      const e = entries[i];
+      const num = cu?.livery?.number;
+      if (e.player) {
+        // voiture de course sans personnalisation : livrée d'origine avec un numéro libre
+        if (!cu && e.spec.livery) return { custom: null, number: free() };
+        return { custom: cu, number: num ?? undefined };
+      }
+      const needs = e.spec.livery || (num !== null && num !== undefined);
+      if (!needs) return { custom: cu, number: undefined };
+      const n = num && !used.has(num) ? num : free();
+      used.add(n);
+      const liv = cu?.livery || { design: 'racing', sponsors: true };
+      return { custom: { ...cu, livery: { ...liv, number: n } }, number: n };
+    });
   }
 
   buildLicenceMarks() {
@@ -360,18 +405,23 @@ export class RaceScene {
     }
   }
 
+  // Gestion des écarts : pas d'élastique. Au plus un léger coup de pouce (≤ 1,5 %) aux voitures
+  // distancées par le joueur, selon la difficulté ; en facile, les voitures de tête lèvent un peu le pied.
   adaptiveAI(dt) {
     this._adT = (this._adT || 0) - dt;
     if (this._adT > 0 || this.sim.phase !== 'racing') return;
     this._adT = 1;
     const pc = this.player;
-    const strength = this.app.settings.rubberBand ?? 0.5;
+    const settings = this.app.settings;
+    const strength = clamp((settings.rubberBand ?? 0.5) * 2, 0, 1);
+    const slowMax = { facile: 0.015, normal: 0.005 }[settings.difficulty] ?? 0;
+    const pushMax = { facile: 0, normal: 0.008, difficile: 0.012, expert: 0.015 }[settings.difficulty] ?? 0.008;
     for (const c of this.sim.cars) {
-      if (!c.ai || c.finished) continue;
-      const gap = this.sim.gapBetween(c, pc); // >0 : l'IA est devant
+      if (!c.ai || c.finished || c === pc) continue;
+      const gap = this.sim.gapBetween(c, pc); // > 0 : l'IA est devant
       let k = 1;
-      if (gap > 4) k = 1 - Math.min(0.05, (gap - 4) * 0.006) * strength;
-      else if (gap < -6) k = 1 + Math.min(0.03, (-gap - 6) * 0.004) * strength;
+      if (gap > 3) k = 1 - Math.min(slowMax, (gap - 3) * 0.002) * strength;
+      else if (gap < -3) k = 1 + Math.min(pushMax, (-gap - 3) * 0.0015) * strength;
       c.ai.speedScale = k;
     }
   }
@@ -439,10 +489,8 @@ export class RaceScene {
       this.hud.big(pos === 1 ? 'VICTOIRE !' : `${pos}${pos === 1 ? 'er' : 'e'}`, pos <= 3 ? 'win' : 'finish');
     } else this.hud.big('ARRIVÉE', 'finish');
     // Tour de décélération : l'IA prend le volant
-    const ai = new AIDriver(pc.vehicle, this.track, this.world.line, { skill: 0.5 });
+    const ai = this.sim.makeAI(pc, { skill: 0.5 });
     ai.speedScale = 0.7;
-    ai.car = pc;
-    ai.hint = pc.hint;
     pc.ai = ai;
     pc.vehicle.assists = { abs: true, tcs: true, stability: true, autoGear: true };
     if (pc.vehicle.gear < 1) pc.vehicle.setGear(1);

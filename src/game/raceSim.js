@@ -14,6 +14,13 @@ export const WET_GRIP = { confort: 0.84, sport: 0.81, semi: 0.77, course: 0.8 };
 const DRAFT_RANGE = 25; // portée de l'aspiration (m)
 const DRAFT_MAX = 0.36; // réduction maximale de la traînée (à moins d'une longueur)
 const MARK = 10; // pas des repères de chronométrage (m)
+
+function byRank(a, b) {
+  if (a.finished && b.finished) return a.finishTime - b.finishTime;
+  if (a.finished) return -1;
+  if (b.finished) return 1;
+  return b.distance - a.distance;
+}
 const _proj = { i: 0, j: 0, t: 0, index: 0, s: 0, lateral: 0, cy: 0, slopeR: 0 };
 
 export class RaceSim {
@@ -325,15 +332,13 @@ export class RaceSim {
     if (this.phase === 'racing') this.phase = 'finishing';
   }
 
+  // Classement courant (tableau réutilisé d'un appel à l'autre : à copier pour le conserver)
   standings() {
-    const list = this.cars.slice();
-    list.sort((a, b) => {
-      if (a.finished && b.finished) return a.finishTime - b.finishTime;
-      if (a.finished) return -1;
-      if (b.finished) return 1;
-      return b.distance - a.distance;
-    });
-    list.forEach((c, i) => (c.position = i + 1));
+    const list = this._order || (this._order = []);
+    list.length = 0;
+    for (const c of this.cars) list.push(c);
+    list.sort(byRank);
+    for (let i = 0; i < list.length; i++) list[i].position = i + 1;
     return list;
   }
 

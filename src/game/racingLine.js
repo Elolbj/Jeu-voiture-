@@ -158,6 +158,17 @@ export class RacingLine {
   }
 }
 
+// Trajectoire de pluie : un peu plus de marge par rapport aux bords (calculée une fois par circuit)
+const WET_LINES = new WeakMap();
+export function wetLine(track) {
+  let l = WET_LINES.get(track);
+  if (!l) {
+    l = new RacingLine(track, 2.1);
+    WET_LINES.set(track, l);
+  }
+  return l;
+}
+
 export function profileAt(profile, track, s) {
   const L = track.length;
   if (track.closed) s = ((s % L) + L) % L;

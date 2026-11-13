@@ -1,0 +1,19 @@
+/* Interface de course : classement en direct, écarts, manche de championnat */
+.hud-champ { margin-top: 4px; font-family: var(--font); font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: rgba(255,255,255,0.8); }
+.hud-champ b { color: var(--accent2, #ffb627); font-weight: 700; }
+.hud-champ .wet { color: #8fc8ff; font-weight: 700; }
+.hud-near { margin-top: 6px; font-family: var(--font); font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
+.hud-near .nr { display: grid; grid-template-columns: 14px 52px 54px; gap: 6px; align-items: center; padding: 2px 8px; background: rgba(6,9,14,0.5); border-radius: 3px; width: max-content; }
+.hud-near .ar { font-size: 10px; }
+.hud-near .ahead .ar { color: #ff8a6a; }
+.hud-near .behind .ar { color: #6ee7a8; }
+.hud-near .nn { font-weight: 700; letter-spacing: .06em; }
+.hud-near .ng { text-align: right; font-variant-numeric: tabular-nums; }
+.hud .hud-tower { top: 186px; }
+.hud.has-champ .hud-tower { top: 206px; }
+.hud-tower .head { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,0.6); padding: 0 8px 2px; }
+.hud-tower .sep { text-align: center; font-size: 11px; line-height: 8px; color: rgba(255,255,255,0.55); }
+.hud-tower .row.fin .rg { color: #ffd76a; }
+@media (max-width: 760px) {
+  .hud-near, .hud-champ { display: none; }
+}

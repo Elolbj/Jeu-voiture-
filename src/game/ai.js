@@ -124,6 +124,10 @@ export class AIDriver {
     this.squeezed = lo > hi;
     if (this.squeezed) latT = (Math.max(this.leftLim, -edge - 0.8) + Math.min(this.rightLim, edge + 0.8)) * 0.5;
     else latT = clamp(latT, lo, hi);
+    // Retour en piste : on longe le bord tant qu'une voiture arrive, sans traverser devant elle
+    const outSide = p.lateral > t.halfWidth + 0.3 ? 1 : p.lateral < -t.halfWidth - 0.3 ? -1 : 0;
+    this.rejoining = outSide !== 0 && this.trafficBack;
+    if (this.rejoining) latT = outSide * (t.halfWidth - 0.2);
     this.off = latT - lineT;
     t.pointAt(sT, latT, _tp);
 
@@ -156,7 +160,7 @@ export class AIDriver {
     if (dev > 1.8) target *= Math.max(0.85, 1 - (dev - 1.8) * 0.025);
     // Hors piste : prudence
     const off = Math.abs(p.lateral) > t.halfWidth + 0.5;
-    if (off) target = Math.min(target, 25);
+    if (off) target = Math.min(target, this.rejoining ? 18 : 25);
 
     const err = target - speed;
     if (err > 0) {
@@ -261,6 +265,7 @@ export class AIDriver {
     this.attacker = null; this.attackDs = 1e9;
     this.side = null; this.sideDs = 0;
     this.nearTraffic = false;
+    this.trafficBack = false;
     let sideLat = 1e9;
     for (let k = 0; k < cars.length; k++) {
       const c = cars[k];
@@ -272,6 +277,7 @@ export class AIDriver {
       const adl = Math.abs(dLat);
       const len = myHalf + c.vehicle.halfLength;
       if (Math.abs(ds) < 30 && adl < 9) this.nearTraffic = true;
+      if (ds > -35 && ds < 10) this.trafficBack = true;
       // Côte à côte : on laisse l'espace d'une voiture
       if ((Math.abs(ds) < len + 0.8 && adl > 1.0) || Math.abs(ds) < len * 0.7) {
         if (adl < SIDE_GAP + 2) {
@@ -335,7 +341,8 @@ export class AIDriver {
       const room = hw + 0.45 - this.passSide * c.lateral; // en dépassement, on s'autorise le bord de piste
       this.doorT = room < SIDE_GAP - 0.45 ? (this.doorT || 0) + dt : 0;
       const outside = this.passSide !== this.cornerSign;
-      if (ds < -(len + 1.5) || ds > 55 || this.passT > 14) { this.passCar = null; this.passWhy = ds < 0 ? 'réussi' : 'abandon'; }
+      this.loseT = ds > len + 6 && speed < c.vehicle.speed - 0.3 ? (this.loseT || 0) + dt : 0;
+      if (ds < -(len + 1.5) || ds > 55 || this.passT > 14 || this.loseT > 1.5) { this.passCar = null; this.passWhy = ds < 0 ? 'réussi' : 'abandon'; }
       else if (outside && ds > len * 0.6 && (this.braking || this.cornerDist < 50)) { this.passCar = null; this.passWhy = 'extérieur'; } // pas assez avancé : on renonce
       else if (!outside && this.braking && ds > len + 3 + speed * 0.12) { this.passCar = null; this.passWhy = 'trop loin'; } // trop loin pour plonger
       else if (this.doorT > 0.4 && ds > len * 0.5) { this.passCar = null; this.passWhy = 'fermé'; } // la porte s'est fermée
@@ -410,7 +417,8 @@ export class AIDriver {
   targetSpeed(s, speed, latT, lineT) {
     const t = this.track;
     const prof = this.profile;
-    const anticip = speed * this.anticipK;
+    // dans l'aspiration, moins de traînée pour aider au freinage : on anticipe un peu
+    const anticip = speed * (this.anticipK + (this.car ? this.car.draft * 0.08 : 0));
     const late = this.mistake === 'late' ? this.mistakeAmt : 0;
     const s1 = s + anticip + late, s2 = s + anticip * 0.4 + late * 0.5;
     let vt = Math.min(profileAt(prof, t, s1), profileAt(prof, t, s2));
