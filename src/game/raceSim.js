@@ -39,8 +39,9 @@ export class RaceSim {
     this.rollingStart = !!opts.rollingStart;
     this.weather = opts.weather === 'pluie' ? 'pluie' : 'sec';
     // Temps de passage du premier en tête à chaque repère de distance (écarts en secondes)
-    this.marks = [0];
-    this.leadDist = 0;
+    this.marks = [];
+    this.leadDist = -1e9;
+    this.leadCar = null;
     entries.forEach((e, idx) => {
       const veh = new Vehicle(e.spec, { ai: !!e.ai, assists: e.assists, name: e.name });
       veh.gripMul = this.gripFor(e.spec);
@@ -288,8 +289,8 @@ export class RaceSim {
     if (this.phase !== 'racing' && this.phase !== 'finishing') return;
     if (c.finished) { c.distance += ds; return; }
     c.distance += ds;
-    if (c.distance > this.leadDist) this.leadDist = c.distance;
-    if (c.distance > 0) {
+    if (c.distance > this.leadDist || this.leadCar === c) { this.leadDist = c.distance; this.leadCar = c; }
+    if (c.distance >= 0) {
       const k = Math.floor(c.distance / MARK);
       while (this.marks.length <= k) this.marks.push(this.time);
     }
@@ -350,7 +351,11 @@ export class RaceSim {
       return c.finishTime - first;
     }
     const d = c.distance;
-    if (d <= 0) return 0;
+    // encore derrière la ligne de départ : temps depuis le passage du premier + distance restante
+    if (d <= 0) {
+      if (this.marks.length) return this.time - this.marks[0] + -d / Math.max(8, c.vehicle.speed);
+      return this.leadCar ? (this.leadDist - d) / Math.max(8, this.leadCar.vehicle.speed) : 0;
+    }
     const f = d / MARK;
     const k = Math.floor(f);
     const m = this.marks;
