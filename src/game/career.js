@@ -45,20 +45,67 @@ export function chapterComplete(profile, ch) {
   return ch.events.every((e) => eventDone(profile, e.id));
 }
 
+// Un chapitre s'ouvre quand le précédent est terminé. Sauvegardes antérieures à l'histoire en 9 chapitres :
+// un chapitre reste ouvert si le joueur a déjà disputé une épreuve de ce chapitre ou d'un chapitre suivant.
 export function chapterUnlocked(profile, ch) {
-  if (ch.id === 0) return true;
-  return chapterComplete(profile, CHAPTERS[ch.id - 1]);
+  const i = CHAPTERS.indexOf(ch);
+  if (i <= 0) return true;
+  if (chapterComplete(profile, CHAPTERS[i - 1])) return true;
+  const done = profile.story.done;
+  return CHAPTERS.slice(i).some((c) => c.events.some((e) => done[e.id]));
 }
 
 export function eventUnlocked(profile, ev) {
   const ch = CHAPTERS[ev.chapter];
   if (!chapterUnlocked(profile, ch)) return false;
-  return (ev.requires || []).every((r) => eventDone(profile, r));
+  // une épreuve déjà réussie reste rejouable, même si ses dépendances ont changé depuis
+  return eventDone(profile, ev.id) || (ev.requires || []).every((r) => eventDone(profile, r));
 }
 
+// Chapitre en cours : le plus avancé des chapitres ouverts et inachevés
 export function currentChapter(profile) {
-  for (const ch of CHAPTERS) if (!chapterComplete(profile, ch)) return ch;
-  return CHAPTERS[CHAPTERS.length - 1];
+  let cur = null;
+  for (const ch of CHAPTERS) if (!chapterComplete(profile, ch) && chapterUnlocked(profile, ch)) cur = ch;
+  return cur || CHAPTERS.find((ch) => !chapterComplete(profile, ch)) || CHAPTERS[CHAPTERS.length - 1];
+}
+
+// Prochaine épreuve jouable (pour les dialogues) : dans le chapitre donné, sinon le suivant
+export function nextEvent(profile, chapterId) {
+  for (const ch of CHAPTERS.slice(chapterId)) {
+    for (const e of ch.events) {
+      const ev = { ...e, chapter: ch.id };
+      if (!eventDone(profile, e.id) && (ch.id > chapterId || eventUnlocked(profile, ev))) return ev;
+    }
+  }
+  return null;
+}
+
+// Bilan d'un chapitre : épreuves réussies, médailles, victoires
+export function chapterProgress(profile, ch) {
+  const out = { done: 0, total: ch.events.length, or: 0, argent: 0, bronze: 0, wins: 0 };
+  for (const e of ch.events) {
+    const rec = profile.story.done[e.id];
+    if (!rec?.ok) continue;
+    out.done++;
+    if (rec.medal) out[rec.medal]++;
+    if (e.type === 'race' && rec.position === 1) out.wins++;
+  }
+  return out;
+}
+
+// Récompense de fin de chapitre (une seule fois). Renvoie la récompense accordée ou null.
+export function claimChapterReward(profile, ch) {
+  const key = 'reward_' + ch.key;
+  if (!ch.reward || profile.story.done[key] || !chapterComplete(profile, ch)) return null;
+  const r = ch.reward;
+  profile.story.done[key] = { ok: true };
+  let car = null;
+  if (r.credits) {
+    profile.credits += r.credits;
+    profile.stats.earned += r.credits;
+  }
+  if (r.car) car = addCar(profile, r.car.car, r.car.color, r.car.upgrades || []);
+  return { credits: r.credits || 0, car, text: r.text };
 }
 
 // Vérifie si une voiture possédée peut participer à l'épreuve
@@ -138,7 +185,7 @@ export function buildOpponents(ev, seedExtra = 0) {
 
 export function gridPosition(ev, profile, nOpp) {
   if (ev.grid === 'qualif') {
-    const q = profile.story.done.c5_qualif;
+    const q = profile.story.done[ev.qualif || 'c5_qualif'];
     const m = q?.medal;
     return Math.min(nOpp, m === 'or' ? 0 : m === 'argent' ? 2 : m === 'bronze' ? 4 : nOpp);
   }
@@ -168,7 +215,7 @@ export function applyEventResult(profile, ev, result) {
   }
   if (!firstTime) credits = Math.round(credits * 0.5 / 100) * 100; // épreuve rejouée
   // Meilleur résultat conservé
-  const rec = { ok: ok || !!prev?.ok, position: result.position, time: result.time, best: result.bestLap, medal };
+  const rec = { ok: ok || !!prev?.ok, position: result.position, time: result.time, best: result.bestLap, medal, tries: (prev?.tries || 0) + 1 };
   if (prev) {
     if (prev.position && (!rec.position || prev.position < rec.position)) rec.position = prev.position;
     if (prev.medal && (!medal || MEDAL_RANK[prev.medal] > MEDAL_RANK[medal])) rec.medal = prev.medal;
@@ -177,7 +224,10 @@ export function applyEventResult(profile, ev, result) {
   profile.story.done[ev.id] = rec;
   profile.credits += credits;
   profile.stats.earned += credits;
-  return { ok, credits, medal, firstTime, newlyCompleted: ok && firstTime };
+  // Viktor au départ : a-t-il fini devant le joueur ?
+  const rival = (result.standings || []).find((st) => st.id === 'rival');
+  const rivalAhead = rival ? rival.position < result.position : null;
+  return { ok, credits, medal, firstTime, newlyCompleted: ok && firstTime, position: result.position, rivalAhead, tries: rec.tries };
 }
 
 export function applyLicenceResult(profile, test, res) {
