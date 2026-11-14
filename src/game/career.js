@@ -4,6 +4,7 @@ import { CHAPTERS, EVENT_BY_ID, LICENCES, LICENCE_BY_ID, DRIVERS, RIVAL } from '
 import { TARGETS } from '../data/targets.js';
 import { rng, lerp } from '../core/utils.js';
 import { carUid } from '../core/save.js';
+import { applySetup } from '../data/setup.js';
 
 export const MEDAL_RANK = { or: 3, argent: 2, bronze: 1 };
 export const MEDAL_KEY = { gold: 'or', silver: 'argent', bronze: 'bronze' };
@@ -16,12 +17,16 @@ export function currentCar(profile) {
   return ownedCar(profile, profile.currentCar) || profile.cars[0] || null;
 }
 
+// Spécification physique d'une voiture possédée : améliorations puis réglages mécaniques
 export function specOf(owned) {
-  return buildSpec(owned.id, owned.upgrades || []);
+  return applySetup(buildSpec(owned.id, owned.upgrades || []), owned.setup);
 }
 
-export function addCar(profile, id, color, upgrades = []) {
-  const car = { uid: carUid(), id, color: color || CAR_BY_ID[id].paints[0], upgrades: [...upgrades], bought: Date.now() };
+// Ajoute une voiture au garage ; custom facultatif (sa couleur de peinture prime sur color)
+export function addCar(profile, id, color, upgrades = [], custom = null) {
+  const col = custom?.paint?.color || color || CAR_BY_ID[id].paints[0];
+  const car = { uid: carUid(), id, color: col, upgrades: [...upgrades], bought: Date.now() };
+  if (custom) car.custom = structuredClone(custom);
   profile.cars.push(car);
   if (!profile.currentCar) profile.currentCar = car.uid;
   return car;
