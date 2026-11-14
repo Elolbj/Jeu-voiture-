@@ -1,6 +1,7 @@
-// Interface de course : compte-tours, vitesse, rapport, position, chronos, classement,
-// mini-carte, messages, aides actives.
+// Interface de course : compte-tours, vitesse, rapport, position, chronos, classement en direct
+// (écarts au premier, voitures devant / derrière), manche de championnat, mini-carte, messages, aides.
 import { formatTime, formatGap, clamp } from '../core/utils.js';
+import './hud.css';
 
 function el(tag, cls, parent, html) {
   const e = document.createElement(tag);
@@ -19,6 +20,17 @@ export class HUD {
     const tl = el('div', 'hud-tl', this.root);
     this.posEl = el('div', 'hud-pos', tl);
     this.lapEl = el('div', 'hud-lap', tl);
+    // Manche de championnat, météo
+    const ch = opts.championship;
+    const info = [];
+    if (ch) info.push(`<b>${ch.name || 'Championnat'}</b> · Manche ${ch.round}/${ch.rounds}`);
+    if (opts.weather === 'pluie') info.push('<span class="wet">Pluie</span>');
+    if (info.length) {
+      el('div', 'hud-champ', tl, info.join(' · '));
+      this.root.classList.add('has-champ');
+    }
+    // Écarts avec les voitures juste devant et juste derrière
+    this.nearEl = el('div', 'hud-near', tl);
     // Tour de classement
     this.tower = el('div', 'hud-tower', this.root);
     // Haut droite : chronos
@@ -163,28 +175,17 @@ export class HUD {
       this.deltaEl.className = 'hud-delta ' + (extra.delta <= 0 ? 'good' : 'bad');
     } else this.deltaEl.textContent = '';
 
-    // Classement (8 premiers)
+    // Classement en direct : tête de course + voisins du joueur, écarts au premier
     if (n > 1) {
       if (!this._towerT || (this._towerT -= dt) <= 0) {
         this._towerT = 0.25;
-        const leader = standings[0];
-        let html = '';
-        standings.slice(0, 10).forEach((c) => {
-          let gap = '';
-          if (c !== leader) {
-            if (c.finished && leader.finished) gap = '+' + (c.finishTime - leader.finishTime).toFixed(1);
-            else {
-              const g = sim.gapBetween(leader, c);
-              gap = g > 0 ? '+' + g.toFixed(1) : '';
-              const lapsDown = Math.floor((leader.distance - c.distance) / sim.track.length);
-              if (sim.track.closed && lapsDown >= 1) gap = `+${lapsDown} T`;
-            }
-          } else gap = sim.phase === 'finishing' && c.finished ? 'ARRIVÉ' : 'TÊTE';
-          html += `<div class="row ${c.isPlayer ? 'me' : ''}"><span class="rp">${c.position}</span><span class="sw" style="background:${c.color}"></span><span class="rn">${c.short || c.name}</span><span class="rg">${gap}</span></div>`;
-        });
-        this.tower.innerHTML = html;
+        this.tower.innerHTML = this.towerHTML(sim, standings, car);
+        this.nearEl.innerHTML = this.nearHTML(sim, standings, car);
       }
-    } else this.tower.innerHTML = '';
+    } else {
+      this.tower.innerHTML = '';
+      this.nearEl.innerHTML = '';
+    }
 
     this.drawTach(v);
     this.thrBar.style.height = `${clamp(v.controls.throttle, 0, 1) * 100}%`;
@@ -193,6 +194,54 @@ export class HUD {
     this.aidEls.TCS.classList.toggle('on', v.tcsActive);
     this.aidEls.ESP.classList.toggle('on', !!v.stabilityActive);
     this.drawMap(sim, car);
+  }
+
+  // Écart lisible entre une voiture et celle qui la précède dans le classement (ou le premier)
+  gapText(sim, ahead, c) {
+    if (c.finished && ahead.finished) return '+' + (c.finishTime - ahead.finishTime).toFixed(1);
+    if (sim.track.closed) {
+      const lapsDown = Math.floor((ahead.distance - c.distance) / sim.track.length);
+      if (lapsDown >= 1) return `+${lapsDown} T`;
+    }
+    const g = sim.gapBetween(ahead, c);
+    return g > 0.05 ? '+' + g.toFixed(1) : '+0.0';
+  }
+
+  towerHTML(sim, standings, me) {
+    const n = standings.length;
+    const leader = standings[0];
+    const racing = sim.phase === 'racing' || sim.phase === 'finishing';
+    // Jusqu'à 10 lignes : les 3 premiers puis une fenêtre autour du joueur
+    const pi = standings.indexOf(me);
+    let from = 0, to = Math.min(n, 10);
+    if (n > 10 && pi >= 7) {
+      from = clamp(pi - 3, 3, n - 7);
+      to = from + 7;
+    }
+    let html = `<div class="head">${racing ? 'Écart au 1er' : 'Grille'}</div>`;
+    const row = (c) => {
+      let gap = '';
+      if (c === leader) gap = sim.phase === 'finishing' && c.finished ? 'ARRIVÉ' : racing ? 'TÊTE' : '';
+      else if (racing) gap = this.gapText(sim, leader, c);
+      return `<div class="row ${c === me ? 'me' : ''} ${c.finished ? 'fin' : ''}"><span class="rp">${c.position}</span><span class="sw" style="background:${c.color}"></span><span class="rn">${c.short || c.name}</span><span class="rg">${gap}</span></div>`;
+    };
+    if (from > 0) {
+      for (let i = 0; i < 3; i++) html += row(standings[i]);
+      html += '<div class="sep">⋯</div>';
+    }
+    for (let i = from; i < to; i++) html += row(standings[i]);
+    return html;
+  }
+
+  // Voitures juste devant et juste derrière le joueur, avec l'écart en secondes
+  nearHTML(sim, standings, me) {
+    if (sim.phase !== 'racing' && sim.phase !== 'finishing') return '';
+    const pi = standings.indexOf(me);
+    let html = '';
+    const a = standings[pi - 1], b = standings[pi + 1];
+    if (a) html += `<div class="nr ahead"><span class="ar">▲</span><span class="nn">${a.short || a.name}</span><span class="ng">${this.gapText(sim, a, me).replace('+', '−')}</span></div>`;
+    if (b) html += `<div class="nr behind"><span class="ar">▼</span><span class="nn">${b.short || b.name}</span><span class="ng">${this.gapText(sim, me, b)}</span></div>`;
+    return html;
   }
 
   drawTach(v) {

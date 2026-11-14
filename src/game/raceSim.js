@@ -1,5 +1,6 @@
-// Logique de course indépendante du rendu : véhicules, IA, collisions, chronométrage,
-// classement. Utilisée par le jeu et par les tests de simulation en ligne de commande.
+// Logique de course indépendante du rendu : véhicules, IA, collisions, aspiration, météo,
+// chronométrage (écarts réels au leader), classement. Utilisée par le jeu et par les tests
+// de simulation en ligne de commande.
 import { Vector3 } from 'three';
 import { Vehicle } from '../physics/vehicle.js';
 import { collideWalls, collideCars } from '../physics/collisions.js';
@@ -8,6 +9,18 @@ import { RacingLine } from './racingLine.js';
 import { clamp } from '../core/utils.js';
 
 export const PHYS_DT = 1 / 240;
+// Adhérence sous la pluie selon le type de pneus (les voitures de course chaussent des pneus pluie)
+export const WET_GRIP = { confort: 0.84, sport: 0.81, semi: 0.77, course: 0.8 };
+const DRAFT_RANGE = 25; // portée de l'aspiration (m)
+const DRAFT_MAX = 0.36; // réduction maximale de la traînée (à moins d'une longueur)
+const MARK = 10; // pas des repères de chronométrage (m)
+
+function byRank(a, b) {
+  if (a.finished && b.finished) return a.finishTime - b.finishTime;
+  if (a.finished) return -1;
+  if (b.finished) return 1;
+  return b.distance - a.distance;
+}
 const _proj = { i: 0, j: 0, t: 0, index: 0, s: 0, lateral: 0, cy: 0, slopeR: 0 };
 
 export class RaceSim {
@@ -24,12 +37,18 @@ export class RaceSim {
     this.cars = [];
     this.events = [];
     this.rollingStart = !!opts.rollingStart;
-    const L = track.length;
+    this.weather = opts.weather === 'pluie' ? 'pluie' : 'sec';
+    // Temps de passage du premier en tête à chaque repère de distance (écarts en secondes)
+    this.marks = [];
+    this.leadDist = -1e9;
+    this.leadCar = null;
     entries.forEach((e, idx) => {
       const veh = new Vehicle(e.spec, { ai: !!e.ai, assists: e.assists, name: e.name });
+      veh.gripMul = this.gripFor(e.spec);
       const car = {
         id: idx,
         name: e.name,
+        driverId: e.id ?? (e.player ? 'player' : null),
         team: e.team || '',
         isPlayer: !!e.player,
         vehicle: veh,
@@ -55,9 +74,11 @@ export class RaceSim {
         impact: 0,
         currentLapValid: true,
         sectorTimes: [],
+        draft: 0,
+        resetWait: 0,
       };
       if (e.ai) {
-        car.ai = new AIDriver(veh, track, this.line, { ...e.ai, name: e.name });
+        car.ai = new AIDriver(veh, track, this.line, { seed: idx * 7919 + 13, ...e.ai, name: e.name, grip: veh.gripMul });
         car.ai.car = car;
         veh.assists = { abs: true, tcs: true, stability: true, autoGear: true };
       }
@@ -66,7 +87,19 @@ export class RaceSim {
     this.placeOnGrid(opts.gridOrder);
     // Voitures immobilisées jusqu'au départ
     for (const c of this.cars) c.vehicle.frozen = true;
-    void L;
+  }
+
+  // Adhérence de la piste pour une voiture (1 sur le sec)
+  gripFor(spec) {
+    return this.weather === 'pluie' ? WET_GRIP[spec.tires] ?? 0.8 : 1;
+  }
+
+  // Crée un pilote IA pour une voiture (pilote automatique, tour de décélération)
+  makeAI(car, opts = {}) {
+    const ai = new AIDriver(car.vehicle, this.track, this.line, { grip: car.vehicle.gripMul, ...opts });
+    ai.car = car;
+    ai.hint = car.hint;
+    return ai;
   }
 
   get player() {
@@ -103,7 +136,7 @@ export class RaceSim {
     car.hint = t.indexAt(s);
     car.vehicle.wallHint = car.hint;
     for (const w of car.vehicle.wheels) w.hint = car.hint;
-    if (car.ai) { car.ai.hint = car.hint; car.ai.avoid = 0; }
+    if (car.ai) { car.ai.hint = car.hint; car.ai.off = 0; }
   }
 
   start() {
@@ -139,6 +172,7 @@ export class RaceSim {
     }
     const aiTick = stepIndex % 4 === 0;
     const allCars = this.cars;
+    if (aiTick) this.updateDraft();
     for (const c of allCars) {
       if (c.ai && aiTick && this.phase !== 'grid') {
         c.ai.update(dt * 4, allCars, this.time);
@@ -166,13 +200,54 @@ export class RaceSim {
     }
     // Progression / chronométrage
     for (const c of allCars) this.track_(c);
-    // Réinitialisations demandées
+    // Réinitialisations demandées (différées tant que du trafic arrive)
     for (const c of allCars) {
       if (c.ai && c.ai.needsReset) {
-        c.ai.needsReset = false;
-        this.resetCar(c);
+        c.resetWait += dt;
+        if (aiTick && (c.resetWait > 6 || !this.trafficNear(c, 70))) {
+          c.ai.needsReset = false;
+          c.resetWait = 0;
+          this.resetCar(c);
+        }
       }
     }
+  }
+
+  // Aspiration : traînée réduite derrière une voiture proche et alignée
+  updateDraft() {
+    const cars = this.cars;
+    const t = this.track;
+    const L = t.length;
+    for (let i = 0; i < cars.length; i++) {
+      const a = cars[i];
+      let best = 0;
+      for (let j = 0; j < cars.length; j++) {
+        if (j === i) continue;
+        const b = cars[j];
+        let ds = b.s - a.s;
+        if (t.closed) { if (ds > L / 2) ds -= L; else if (ds < -L / 2) ds += L; }
+        if (ds < 3 || ds > DRAFT_RANGE) continue;
+        const dl = Math.abs(b.lateral - a.lateral);
+        if (dl > 3) continue;
+        const f = (1 - (ds - 3) / (DRAFT_RANGE - 3)) * Math.min(1, 1.25 - dl / 2.4);
+        if (f > best) best = f;
+      }
+      a.draft = best;
+      a.vehicle.dragMul = 1 - DRAFT_MAX * best;
+    }
+  }
+
+  // Une voiture arrive-t-elle derrière (ou se trouve-t-elle près de) la voiture c ?
+  trafficNear(c, back) {
+    const t = this.track;
+    const L = t.length;
+    for (const o of this.cars) {
+      if (o === c) continue;
+      let ds = o.s - c.s;
+      if (t.closed) { if (ds > L / 2) ds -= L; else if (ds < -L / 2) ds += L; }
+      if (ds > -back && ds < 12) return true;
+    }
+    return false;
   }
 
   resetCar(c) {
@@ -214,6 +289,11 @@ export class RaceSim {
     if (this.phase !== 'racing' && this.phase !== 'finishing') return;
     if (c.finished) { c.distance += ds; return; }
     c.distance += ds;
+    if (c.distance > this.leadDist || this.leadCar === c) { this.leadDist = c.distance; this.leadCar = c; }
+    if (c.distance >= 0) {
+      const k = Math.floor(c.distance / MARK);
+      while (this.marks.length <= k) this.marks.push(this.time);
+    }
     // Sens interdit
     const trackHeading = Math.atan2(t.dx[p.index], -t.dz[p.index]);
     const carHeading = Math.atan2(v.forward.x, -v.forward.z);
@@ -254,20 +334,43 @@ export class RaceSim {
     if (this.phase === 'racing') this.phase = 'finishing';
   }
 
+  // Classement courant (tableau réutilisé d'un appel à l'autre : à copier pour le conserver)
   standings() {
-    const list = this.cars.slice();
-    list.sort((a, b) => {
-      if (a.finished && b.finished) return a.finishTime - b.finishTime;
-      if (a.finished) return -1;
-      if (b.finished) return 1;
-      return b.distance - a.distance;
-    });
-    list.forEach((c, i) => (c.position = i + 1));
+    const list = this._order || (this._order = []);
+    list.length = 0;
+    for (const c of this.cars) list.push(c);
+    list.sort(byRank);
+    for (let i = 0; i < list.length; i++) list[i].position = i + 1;
     return list;
   }
 
-  // Écart (en secondes estimées) entre deux voitures.
+  // Écart en secondes au premier en tête (temps écoulé depuis son passage au même endroit).
+  gapToLeader(c) {
+    if (c.finished) {
+      const first = this.cars.reduce((m, x) => (x.finished && x.finishTime < m ? x.finishTime : m), Infinity);
+      return c.finishTime - first;
+    }
+    const d = c.distance;
+    // encore derrière la ligne de départ : temps depuis le passage du premier + distance restante
+    if (d <= 0) {
+      if (this.marks.length) return this.time - this.marks[0] + -d / Math.max(8, c.vehicle.speed);
+      return this.leadCar ? (this.leadDist - d) / Math.max(8, this.leadCar.vehicle.speed) : 0;
+    }
+    const f = d / MARK;
+    const k = Math.floor(f);
+    const m = this.marks;
+    if (k >= m.length) return 0;
+    // entre deux repères (le dernier est la position actuelle du premier)
+    let t1 = this.time, d1 = this.leadDist;
+    if (k + 1 < m.length) { t1 = m[k + 1]; d1 = (k + 1) * MARK; }
+    const u = d1 > k * MARK ? (d - k * MARK) / (d1 - k * MARK) : 1;
+    return Math.max(0, this.time - (m[k] + (t1 - m[k]) * clamp(u, 0, 1)));
+  }
+
+  // Écart (en secondes) entre deux voitures : > 0 si a est devant b.
   gapBetween(a, b) {
+    if (a.finished && b.finished) return b.finishTime - a.finishTime;
+    if (this.phase === 'racing' || this.phase === 'finishing') return this.gapToLeader(b) - this.gapToLeader(a);
     const d = a.distance - b.distance;
     const sp = Math.max(10, (Math.abs(a.vehicle.speed) + Math.abs(b.vehicle.speed)) / 2);
     return d / sp;

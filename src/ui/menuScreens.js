@@ -11,6 +11,7 @@ import { music } from '../core/audio.js';
 import { CAM_LABEL } from '../game/cameras.js';
 import * as Story from './storyScreens.js';
 import * as Shop from './shopScreens.js';
+import { showChampionships, TROPHY_ICON, champHubSub } from './championshipScreens.js';
 
 export const LOGO = `<div class="logo"><span class="logo-main">TRAJECTOIRE</span><span class="logo-sub">SIMULATION DE COURSE</span></div>`;
 
@@ -110,6 +111,7 @@ export function showHub(app) {
     h('nav', { class: 'hub-menu' },
       tile('Mode Histoire', storySub, () => Story.showStory(app, ch.id), { icon: ICONS.story, cls: 'big', default: true }),
       tile('Courses à la carte', 'Séries libres, gains en crédits', () => Story.showFreeEvents(app), { icon: ICONS.race }),
+      tile('Championnats', champHubSub(p), () => showChampionships(app), { icon: TROPHY_ICON }),
       tile('Course rapide', 'Toutes les voitures, tous les circuits', () => showQuickRace(app), { icon: ICONS.quick }),
       tile('Permis', 'Épreuves de pilotage', () => Story.showLicences(app), { icon: ICONS.licence }),
       tile('Concession', 'Acheter une voiture', () => Shop.showDealer(app), { icon: ICONS.dealer }),
@@ -241,7 +243,7 @@ export function showQuickRace(app) {
       laps: TRACK_BY_ID[st.track].closed === false ? 1 : st.laps,
       mode: 'race',
       title: 'Course rapide',
-      player: { spec, color: owned?.color || CAR_BY_ID[st.carId].paints[0], name: p.name },
+      player: { spec, color: owned?.color || CAR_BY_ID[st.carId].paints[0], name: p.name, custom: owned?.custom },
       opponents,
       playerGrid: Math.floor(opponents.length / 2),
     }, null);
@@ -267,7 +269,7 @@ export function loadingScreen(app, cfg) {
   const tip = TIPS[Math.floor(Math.random() * TIPS.length)];
   const el = h('div', { class: 'loading-screen' },
     h('div', { class: 'ld-track' }, def.name),
-    h('div', { class: 'ld-loc' }, `${def.location} · ${TIME_LABEL[cfg.time || def.time]}`),
+    h('div', { class: 'ld-loc' }, `${def.location} · ${TIME_LABEL[cfg.time || def.time]}${cfg.weather === 'pluie' ? ' · Pluie' : ''}`),
     h('div', { class: 'ld-title' }, cfg.title || ''),
     h('div', { class: 'spinner' }),
     h('div', { class: 'ld-tip' }, h('b', {}, 'Conseil : '), tip),

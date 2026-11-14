@@ -1,0 +1,33 @@
+/* Écrans des championnats */
+.champ-card .champ-cond { margin-top: 6px; font-size: 13px; color: var(--accent2); font-weight: 600; }
+.champ-card .champ-reward { font-size: 13px; color: var(--muted); }
+.champ-card .ev-status small { max-width: 170px; }
+.champ-rounds { display: flex; flex-direction: column; gap: 6px; }
+.champ-round { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,0.04); }
+.champ-round .cr-num { font-family: var(--cond); font-size: 22px; font-weight: 700; color: var(--accent); text-align: center; }
+.champ-round .cr-main { display: flex; flex-direction: column; }
+.champ-round .cr-main small { color: var(--muted); font-size: 12px; }
+.champ-round .cr-res { font-size: 13px; font-weight: 600; text-align: right; }
+.champ-round .cr-res.wet { color: #8fc8ff; }
+.champ-round.done { border-color: rgba(46,229,157,0.35); }
+.champ-round.done .cr-res { color: var(--green); }
+.champ-round.next { border-color: var(--accent); background: rgba(61,139,255,0.12); }
+.champ-detail .prizes .gift { font-size: 15px; }
+.champ-detail .small { font-size: 12px; margin-top: 8px; }
+table.champ-table { font-size: 13px; margin-top: 4px; }
+table.champ-table td { padding: 5px 6px; }
+table.champ-table .sw { display: inline-block; width: 4px; height: 12px; margin-right: 6px; vertical-align: -1px; border-radius: 1px; }
+table.champ-table .car { display: block; color: var(--muted); font-size: 11px; margin-left: 10px; }
+table.champ-table .pts { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.results-screen table.champ-table { font-size: 15px; }
+.results-screen table.champ-table .car { display: inline; }
+.mv { font-size: 12px; font-weight: 700; }
+.mv.up { color: var(--green); }
+.mv.down { color: #ff8a8a; }
+.mv.same { color: var(--muted); }
+/* Accueil : une tuile de plus, version compacte sur les écrans peu hauts */
+@media (max-height: 820px) {
+  .hub-menu { gap: 7px; }
+  .hub-menu .tile { padding-top: 11px; padding-bottom: 11px; }
+  .hub-menu .tile.big { padding-top: 15px; padding-bottom: 15px; }
+}

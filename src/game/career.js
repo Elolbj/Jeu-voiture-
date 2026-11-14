@@ -115,19 +115,21 @@ export function buildOpponents(ev, seedExtra = 0) {
     const spec = fitToCap(id, cap, target);
     const skill = lerp(s0, s1, o.count > 1 ? i / (o.count - 1) : 0.5) * (0.97 + r() * 0.06);
     list.push({
-      name: names[i][0],
-      short: names[i][1],
+      id: 'd' + i, // identifiant stable pour une même graine (championnats)
+      name: names[i % names.length][0],
+      short: names[i % names.length][1],
       spec,
       color: car.paints[Math.floor(r() * car.paints.length)],
       skill,
       aggression: 0.3 + r() * 0.5,
       lineBias: (r() - 0.5) * 1.2,
+      seed: (seedExtra * 97 + i * 7919 + ev.id.length * 13) >>> 0, // livrée et pilotage reproductibles
     });
   }
   if (o.rival) {
     let spec = buildSpec(o.rival.car, o.rival.upgrades || []);
     if (cap && spec.pp > cap) spec = fitToCap(o.rival.car, cap, cap);
-    list.push({ name: RIVAL.name, short: RIVAL.short, spec, color: RIVAL.color, skill: o.rival.skill, aggression: 0.75, lineBias: 0 });
+    list.push({ id: 'rival', name: RIVAL.name, short: RIVAL.short, spec, color: RIVAL.color, skill: o.rival.skill, aggression: 0.75, lineBias: 0, seed: (seedExtra * 97 + 4241) >>> 0 });
   }
   // Grille : les plus rapides devant
   list.sort((a, b) => b.skill * b.spec.pp - a.skill * a.spec.pp);

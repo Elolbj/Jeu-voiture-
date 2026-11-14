@@ -84,13 +84,14 @@ export class RacingLine {
     return this.offset[i] * (1 - u) + this.offset[j] * u;
   }
 
-  // Profil de vitesse pour une voiture donnée (spec) et un niveau d'adhérence exploité.
-  speedProfile(spec, gripFactor = 0.95) {
+  // Profil de vitesse pour une voiture donnée (spec), un niveau d'adhérence exploité par le pilote
+  // et l'adhérence de la piste (surfaceGrip < 1 sous la pluie : freinages plus longs).
+  speedProfile(spec, gripFactor = 0.95, surfaceGrip = 1) {
     const t = this.track;
     const n = this.n;
     const tire = TIRES[spec.tires];
     const mass = spec.mass + 75;
-    const mu = tire.mu * 0.93 * gripFactor;
+    const mu = tire.mu * 0.93 * gripFactor * surfaceGrip;
     const aeroK = (0.5 * 1.225 * (spec.aero.clF + spec.aero.clR)) / mass;
     const dragK = (0.5 * 1.225 * spec.aero.cd * spec.aero.area) / mass;
     const power = spec.engine.hp * 735.5 * 0.86;
@@ -122,13 +123,16 @@ export class RacingLine {
         const vj = v[j];
         const lat = latOf(j, vj);
         const gripTot = mu * normOf(j, vj);
-        const brakeCap = G * (1.55 + (spec.aero.clF + spec.aero.clR) * 0.35) * (spec.brakeMul || 1) * 0.9;
+        const brakeCap = G * (1.55 + (spec.aero.clF + spec.aero.clR) * 0.35) * (spec.brakeMul || 1) * 0.9 * surfaceGrip;
         const longAvail = Math.min(brakeCap, Math.sqrt(Math.max(0, gripTot * gripTot - lat * lat)) * 0.95) + dragK * vj * vj;
         const grade = t.grade[i] * G;
         const vi = Math.sqrt(vj * vj + 2 * Math.max(1, longAvail + grade) * ds);
         if (vi < v[i]) v[i] = vi;
       }
     }
+    // Limites de virage et de freinage seules (sans la phase d'accélération) : l'IA s'y réfère en
+    // ligne droite pour rester pied au plancher (aspiration, sortie plus rapide)
+    const lim = v.slice();
     // Accélération (passe avant)
     for (let l = 0; l < loops; l++) {
       for (let i = t.closed ? 0 : 1; i < n; i++) {
@@ -142,6 +146,7 @@ export class RacingLine {
         if (vi < v[i]) v[i] = vi;
       }
     }
+    v.limit = lim;
     return v;
   }
 
@@ -160,6 +165,17 @@ export class RacingLine {
     const gearMax = ((spec.engine.limiter * Math.PI) / 30 / (gb.ratios[gb.ratios.length - 1] * gb.final)) * spec.wheel.radius;
     return Math.min(lo, gearMax * 0.98);
   }
+}
+
+// Trajectoire de pluie : un peu plus de marge par rapport aux bords (calculée une fois par circuit)
+const WET_LINES = new WeakMap();
+export function wetLine(track) {
+  let l = WET_LINES.get(track);
+  if (!l) {
+    l = new RacingLine(track, 2.1);
+    WET_LINES.set(track, l);
+  }
+  return l;
 }
 
 export function profileAt(profile, track, s) {
