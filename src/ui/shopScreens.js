@@ -1,9 +1,11 @@
-// Concession, garage et préparateur.
+// Concession, garage (avec la personnalisation de chaque voiture) et préparateur.
 import { h, btn } from './ui.js';
 import { CAR_BY_ID, CATEGORIES, DRIVE_LABEL, TIRES, UPGRADES, UPGRADE_BY_ID, buildSpec, upgradePrice, carLabel } from '../data/cars.js';
 import { formatCredits } from '../core/utils.js';
 import { currentCar, specOf, addCar, carValue, dealerCars } from '../game/career.js';
 import { topBar, showHub } from './menuScreens.js';
+import { showCustomize, customSummary } from './customizeScreens.js';
+import { setupChanges } from '../data/setup.js';
 
 function statBar(label, value, max, unit = '') {
   const pct = Math.max(2, Math.min(100, (value / max) * 100));
@@ -90,7 +92,7 @@ export function showGarage(app, selUid = null, onPick = null) {
   const sel = p.cars.find((c) => c.uid === selUid) || currentCar(p);
   if (!sel) return showHub(app);
   const spec = specOf(sel);
-  app.displayCar(sel.id, sel.color, sel.upgrades);
+  app.displayCar(sel.id, sel.color, sel.upgrades, sel.custom, sel.setup);
   app.showroom.offsetX = 0.6;
   const isCurrent = p.currentCar === sel.uid;
   const sell = () => {
@@ -118,16 +120,20 @@ export function showGarage(app, selUid = null, onPick = null) {
       h('h3', {}, `Vos voitures (${p.cars.length})`),
       h('div', { class: 'list tall' }, ...p.cars.map((c) => {
         const s = specOf(c);
+        const perso = c.custom || setupChanges(c.setup) ? ' · Personnalisée' : '';
         return h('button', { class: `item nav ${c === sel ? 'on default' : ''}`, onclick: () => showGarage(app, c.uid, onPick) },
-          h('span', { class: 'sw', style: { background: c.color } }),
-          h('b', {}, carLabel(s)), h('small', {}, `PP ${s.pp} · ${s.engine.hp} ch${c.uid === p.currentCar ? ' · Actuelle' : ''}${c.upgrades.length ? ` · ${c.upgrades.length} amélioration${c.upgrades.length > 1 ? 's' : ''}` : ''}`));
+          h('span', { class: 'sw', style: { background: c.custom?.paint?.color || c.color } }),
+          h('b', {}, carLabel(s)), h('small', {}, `PP ${s.pp} · ${s.engine.hp} ch${c.uid === p.currentCar ? ' · Actuelle' : ''}${c.upgrades.length ? ` · ${c.upgrades.length} amélioration${c.upgrades.length > 1 ? 's' : ''}` : ''}${perso}`));
       })),
     ),
     h('div', { class: 'sidebar right' },
       specPanel(spec),
+      h('h3', {}, 'Personnalisation'),
+      customSummary(sel),
       h('div', { class: 'row' },
         btn(isCurrent && !onPick ? 'Voiture actuelle' : onPick ? 'Choisir pour cette épreuve' : 'Choisir cette voiture', choose, `primary ${isCurrent && !onPick ? 'disabled' : ''}`),
         btn('Préparer', () => showTuning(app, sel.uid)),
+        btn('Atelier', () => showCustomize(app, sel.uid, () => showGarage(app, sel.uid, onPick))),
         btn(`Vendre (${formatCredits(carValue(sel))})`, sell, 'danger'),
       ),
     ),
@@ -141,7 +147,7 @@ export function showTuning(app, uid = null) {
   const sel = p.cars.find((c) => c.uid === uid) || currentCar(p);
   const base = CAR_BY_ID[sel.id];
   const spec = specOf(sel);
-  app.displayCar(sel.id, sel.color, sel.upgrades);
+  app.displayCar(sel.id, sel.color, sel.upgrades, sel.custom, sel.setup);
   app.showroom.offsetX = 0.6;
   const groups = [...new Set(UPGRADES.map((u) => u.group))];
   const items = [];
@@ -178,7 +184,10 @@ export function showTuning(app, uid = null) {
     h('div', { class: 'sidebar wide' },
       h('div', { class: 'row between' },
         h('h3', {}, carLabel(spec)),
-        btn('Changer de voiture', () => showGarage(app, sel.uid, (c) => showTuning(app, c ? c.uid : sel.uid))),
+        h('div', { class: 'seg' },
+          btn('Réglages', () => showCustomize(app, sel.uid, () => showTuning(app, sel.uid), 'setup')),
+          btn('Changer de voiture', () => showGarage(app, sel.uid, (c) => showTuning(app, c ? c.uid : sel.uid))),
+        ),
       ),
       h('div', { class: 'upg-list' }, ...items),
     ),

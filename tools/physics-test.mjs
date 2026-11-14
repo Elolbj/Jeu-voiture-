@@ -8,10 +8,12 @@
 //   --check   contrôle de cohérence des données (régimes, couple, rapports, pneus, marques…), code de sortie 1 si erreur
 //   --upg=…   applique des améliorations du préparateur avant le test
 //   --notcs   désactive l'antipatinage (départs arrêtés)
+//   --setup=… réglages mécaniques (src/data/setup.js) : defaut, min, max, alterne, ou JSON ({"final":1.1,"springF":1.2})
 //   --json    sortie JSON (une ligne par voiture)
 import { Vector3 } from 'three';
 import { Vehicle, SURFACES } from '../src/physics/vehicle.js';
 import { CARS, CAR_BY_ID, CATEGORIES, BRANDS, TIRES, buildSpec, engineLabel } from '../src/data/cars.js';
+import { applySetup, defaultSetup, setupFields, fieldRange, storeValue } from '../src/data/setup.js';
 
 // Références réelles comparables (chiffres constructeur ou essais presse, arrondis).
 // t100 / t200 en s, q400 / k1000 en s (départ arrêté), vmax en km/h (« lim. » = bridée électroniquement).
@@ -60,6 +62,19 @@ const opt = (name) => args.find((a) => a.startsWith('--' + name + '='))?.split('
 const ids = args.filter((a) => !a.startsWith('--'));
 const upgrades = opt('upg') ? opt('upg').split(',') : [];
 const showRef = flag('ref');
+// Réglage appliqué à chaque voiture : extrêmes (bornes de chaque curseur), alterné (min/max un champ sur deux) ou JSON
+function setupFor(spec) {
+  const o = opt('setup');
+  if (!o) return null;
+  if (o === 'defaut') return defaultSetup(spec);
+  if (o === 'min' || o === 'max' || o === 'alterne') {
+    return Object.fromEntries(setupFields(spec).map((f, i) => {
+      const [lo, hi] = fieldRange(f, spec);
+      return [f.id, storeValue(f, spec, o === 'min' || (o === 'alterne' && i % 2) ? lo : hi)];
+    }));
+  }
+  return JSON.parse(o);
+}
 const json = flag('json');
 
 function settle(v) {
@@ -214,7 +229,8 @@ if (!list.length) {
   process.exit(1);
 }
 for (const car of list) {
-  const spec = buildSpec(car.id, upgrades);
+  const base = buildSpec(car.id, upgrades);
+  const spec = applySetup(base, setupFor(base));
   const a = accelTest(spec);
   if (a.error) {
     console.log(`${car.id}: ERREUR ${a.error}`);

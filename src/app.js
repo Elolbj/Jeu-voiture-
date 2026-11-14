@@ -77,18 +77,23 @@ export class App {
     this.save();
   }
 
-  // Voiture affichée dans la salle d'exposition
-  displayCar(id, color, upgrades = []) {
-    const key = id + color + upgrades.join(',');
-    if (key === this.showroomCarKey) return;
+  // Voiture affichée dans la salle d'exposition, avec sa personnalisation (owned.custom, couleur absente = color)
+  // et ses réglages (seule la hauteur de caisse change le modèle). Simple changement d'aspect : sans reconstruction.
+  displayCar(id, color, upgrades = [], custom = null, setup = null) {
+    const spec = specOf({ id, upgrades, setup });
+    const key = `${id}|${upgrades.join(',')}|${spec.lowered || 0}`;
+    const cu = { ...(custom || {}), paint: { ...(custom?.paint || {}), color: custom?.paint?.color || color } };
+    const look = JSON.stringify(cu);
+    if (key === this.showroomCarKey && this.showroom.car) {
+      if (look !== this.showroomLook) this.showroom.applyCustom(cu);
+    } else this.showroom.setCar(spec, color, { custom: cu });
     this.showroomCarKey = key;
-    const spec = specOf({ id, upgrades });
-    this.showroom.setCar(spec, color);
+    this.showroomLook = look;
   }
 
   displayCurrentCar() {
     const c = this.profile && currentCar(this.profile);
-    if (c) this.displayCar(c.id, c.color, c.upgrades);
+    if (c) this.displayCar(c.id, c.color, c.upgrades, c.custom, c.setup);
     else this.displayCar('kaze_86', '#e04e1a');
   }
 

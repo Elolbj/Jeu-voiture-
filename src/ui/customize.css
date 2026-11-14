@@ -1,0 +1,89 @@
+/* Atelier de personnalisation (peinture, livrée, jantes, détails, réglages) et résumé au garage */
+.cz-screen { background: linear-gradient(90deg, rgba(5,7,11,0.72), rgba(5,7,11,0) 46%); }
+.cz-panel { position: absolute; left: 24px; top: 80px; bottom: 20px; width: min(470px, 40vw); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(10px); overflow: hidden; }
+.cz-head { padding: 14px 16px 0; }
+.cz-head .cz-car { font-family: var(--cond); font-size: 22px; font-weight: 700; letter-spacing: .02em; }
+.cz-head .cz-car small { display: block; font-family: var(--font); font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.cz-tabs { display: flex; gap: 4px; margin-top: 12px; border-bottom: 1px solid var(--line); }
+.cz-tab { appearance: none; flex: 1 1 0; padding: 9px 4px 10px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-size: 14px; font-weight: 600; letter-spacing: .03em; cursor: pointer; }
+.cz-tab.on { color: var(--text); border-bottom-color: var(--accent); }
+.cz-tab.focus, .cz-tab:hover { color: #fff; background: rgba(255,255,255,0.06); }
+.cz-tabs-keys { margin-left: auto; align-self: center; font-size: 11px; color: var(--muted); padding: 0 2px; white-space: nowrap; }
+.cz-body { flex: 1; overflow-y: auto; padding: 4px 16px 16px; }
+.cz-body h3 { margin: 16px 0 8px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); display: flex; justify-content: space-between; align-items: baseline; }
+.cz-body h3 small { color: var(--muted); letter-spacing: .04em; text-transform: none; font-weight: 500; font-size: 12px; }
+.cz-hint { min-height: 38px; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); background: rgba(0,0,0,0.2); }
+
+.cz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 6px; }
+.cz-grid.three { grid-template-columns: repeat(3, 1fr); }
+.cz-opt { appearance: none; display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,0.04); cursor: pointer; }
+.cz-opt b { font-size: 14px; font-weight: 600; }
+.cz-opt small { font-size: 12px; color: var(--accent2); }
+.cz-opt small.free { color: var(--muted); }
+.cz-opt.on { background: rgba(61,139,255,0.22); border-color: rgba(61,139,255,0.75); }
+.cz-opt.focus, .cz-opt:hover { border-color: #fff; }
+.cz-opt.disabled { opacity: .4; cursor: default; }
+
+.cz-swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 7px; }
+.cz-swatches .swatch { width: 100%; height: auto; aspect-ratio: 1; }
+.cz-color { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; margin-top: 10px; }
+.cz-color label { font-size: 12px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.cz-chip { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cz-chip i { width: 22px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.4); }
+
+.cz-range { -webkit-appearance: none; appearance: none; width: 100%; height: 10px; margin: 6px 0; border-radius: 5px; background: rgba(255,255,255,0.14); outline: none; cursor: pointer; }
+.cz-range::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.6); }
+.cz-range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid var(--accent); }
+.cz-range.focus { box-shadow: 0 0 0 2px rgba(255,255,255,0.85); }
+.cz-range.focus::-webkit-slider-thumb { transform: scale(1.2); }
+
+.cz-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.cz-row > span { font-size: 14px; }
+.cz-row b { font-variant-numeric: tabular-nums; }
+.cz-plate { display: flex; gap: 8px; align-items: center; }
+.cz-plate .text-input { font-family: var(--cond); font-size: 20px; letter-spacing: .12em; text-transform: uppercase; padding: 8px 12px; background: #f4f5f2; color: #111418; border-color: #1d3f8f; border-left: 14px solid #1d3f8f; }
+.cz-plate .text-input.focus { box-shadow: 0 0 0 3px rgba(61,139,255,0.7); }
+.btn.small { padding: 7px 12px; font-size: 13px; }
+.cz-note { font-size: 13px; color: var(--muted); padding: 10px 12px; border: 1px dashed var(--line2); border-radius: 8px; }
+
+/* Réglages mécaniques */
+.cz-set { padding: 8px 0 6px; border-bottom: 1px solid var(--line); }
+.cz-set-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 14px; }
+.cz-set-top b { font-variant-numeric: tabular-nums; }
+.cz-set-top b.mod { color: var(--accent2); }
+.cz-track { position: relative; }
+.cz-track .cz-origin { position: absolute; top: 2px; width: 2px; height: 18px; margin-left: -1px; background: var(--accent2); border-radius: 1px; pointer-events: none; opacity: .8; }
+.cz-set-bot { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+.cz-set-bot em { font-style: normal; color: var(--text); opacity: .75; }
+.cz-pp { font-family: var(--cond); font-size: 18px; font-weight: 700; }
+.cz-pp .delta { font-size: 14px; }
+
+/* Devis */
+.cz-summary { position: absolute; right: 24px; bottom: 20px; width: min(330px, 28vw); padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(10px); }
+.cz-summary h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+.cz-lines { display: flex; flex-direction: column; gap: 4px; max-height: 22vh; overflow-y: auto; font-size: 13px; }
+.cz-lines div { display: flex; justify-content: space-between; gap: 10px; }
+.cz-lines span { color: var(--muted); }
+.cz-total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.cz-total b { font-family: var(--cond); font-size: 28px; color: var(--accent2); }
+.cz-after { font-size: 12px; color: var(--muted); text-align: right; }
+.cz-after.bad { color: var(--red); }
+.cz-summary .row { margin-top: 10px; gap: 8px; }
+.cz-summary .row .btn { flex: 1; padding: 10px 12px; }
+
+/* Résumé au garage */
+.cz-mini { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin-top: 6px; font-size: 13px; }
+.cz-mini span { color: var(--muted); }
+.cz-mini b { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.cz-mini i { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.5); display: inline-block; }
+
+/* Accueil : tuiles plus compactes quand elles sont nombreuses, défilement si l'écran est trop bas */
+.hub-menu:has(> .tile:nth-child(9)) { gap: 6px; top: 80px; max-height: calc(100vh - 100px); overflow-y: auto; padding: 0 8px 4px 0; }
+.hub-menu:has(> .tile:nth-child(9)) .tile { padding-top: 9px; padding-bottom: 9px; flex-shrink: 0; }
+.hub-menu:has(> .tile:nth-child(9)) .tile.big { padding-top: 13px; padding-bottom: 13px; }
+
+@media (max-width: 900px) {
+  .cz-panel { left: 12px; right: 12px; width: auto; top: 64px; bottom: 44vh; }
+  .cz-summary { left: 12px; right: 12px; width: auto; bottom: 12px; padding: 10px 12px; }
+  .cz-lines { max-height: 9vh; }
+}

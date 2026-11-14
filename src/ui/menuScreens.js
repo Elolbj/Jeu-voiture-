@@ -12,6 +12,7 @@ import { CAM_LABEL } from '../game/cameras.js';
 import * as Story from './storyScreens.js';
 import * as Shop from './shopScreens.js';
 import { showChampionships, TROPHY_ICON, champHubSub } from './championshipScreens.js';
+import { showCustomize, CUSTOMIZE_ICON } from './customizeScreens.js';
 
 export const LOGO = `<div class="logo"><span class="logo-main">TRAJECTOIRE</span><span class="logo-sub">SIMULATION DE COURSE</span></div>`;
 
@@ -117,6 +118,7 @@ export function showHub(app) {
       tile('Concession', 'Acheter une voiture', () => Shop.showDealer(app), { icon: ICONS.dealer }),
       tile('Garage', `${p.cars.length} voiture${p.cars.length > 1 ? 's' : ''}`, () => Shop.showGarage(app), { icon: ICONS.garage }),
       tile('Préparateur', 'Améliorations', () => Shop.showTuning(app), { icon: ICONS.tune }),
+      tile('Atelier', 'Peinture, jantes, réglages', () => showCustomize(app, null, () => showHub(app)), { icon: CUSTOMIZE_ICON }),
       tile('Options', 'Graphismes, aides, son', () => showOptions(app, () => showHub(app)), { icon: ICONS.options }),
     ),
     carInfoPanel(app),

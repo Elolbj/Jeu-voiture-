@@ -54,10 +54,26 @@ export function loadProfile() {
     p.stats = { races: 0, wins: 0, podiums: 0, distance: 0, earned: 0, ...(p.stats || {}) };
     // Migration : profils antérieurs aux championnats
     if (!p.championships || typeof p.championships !== 'object') p.championships = {};
+    p.cars = Array.isArray(p.cars) ? p.cars : [];
+    for (const c of p.cars) migrateCar(c);
     return p;
   } catch (e) {
     console.warn('Sauvegarde illisible', e);
     return null;
+  }
+}
+
+// Voiture possédée : améliorations, personnalisation (owned.custom) et réglages (owned.setup) valides.
+// Une personnalisation sans couleur de peinture reprend owned.color (géré au rendu).
+function migrateCar(c) {
+  c.upgrades = Array.isArray(c.upgrades) ? c.upgrades.filter((u) => typeof u === 'string') : [];
+  if (c.custom !== undefined && (!c.custom || typeof c.custom !== 'object' || Array.isArray(c.custom))) delete c.custom;
+  if (c.custom?.paint?.color && typeof c.custom.paint.color === 'string') c.color = c.custom.paint.color;
+  if (c.setup !== undefined) {
+    const s = {};
+    if (c.setup && typeof c.setup === 'object') for (const [k, v] of Object.entries(c.setup)) if (typeof v === 'number' && isFinite(v)) s[k] = v;
+    if (Object.keys(s).length) c.setup = s;
+    else delete c.setup;
   }
 }
 
