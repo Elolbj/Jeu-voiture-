@@ -365,7 +365,7 @@ function afterStoryEvent(app, chapId, ctx = {}, then = null) {
 }
 
 // Écran de fin de chapitre : bilan des épreuves, récompense, chapitre suivant
-function showChapterEnd(app, chap, reward) {
+export function showChapterEnd(app, chap, reward) {
   const p = app.profile;
   const pr = C.chapterProgress(p, chap);
   const nextCh = CHAPTERS[chap.id + 1];
@@ -687,8 +687,8 @@ function runLicenceTest(app, L, test, back) {
       onContinue: () => {
         // si la licence termine un chapitre : conclusion et fin de chapitre
         const ch = licenceChapter(L.id);
-        if (ch && C.licenceOk(p, L.id)) return afterStoryEvent(app, ch.id, {}, back);
         back();
+        if (ch && C.licenceOk(p, L.id)) afterStoryEvent(app, ch.id, {}, () => {});
       },
     };
   });
