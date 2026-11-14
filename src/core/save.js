@@ -26,7 +26,7 @@ export function newProfile(name = 'Pilote') {
     credits: 0,
     cars: [],
     currentCar: null,
-    story: { started: false, chapter: 0, done: {}, seen: {}, finished: false },
+    story: { v: 2, started: false, chapter: 0, done: {}, seen: {}, finished: false },
     licences: {},
     stats: { races: 0, wins: 0, podiums: 0, distance: 0, earned: 0 },
     championships: {}, // état des championnats (format décrit dans src/game/championship.js)
@@ -56,6 +56,7 @@ export function loadProfile() {
     if (!p.championships || typeof p.championships !== 'object') p.championships = {};
     p.cars = Array.isArray(p.cars) ? p.cars : [];
     for (const c of p.cars) migrateCar(c);
+    migrateStory(p.story);
     return p;
   } catch (e) {
     console.warn('Sauvegarde illisible', e);
@@ -75,6 +76,16 @@ function migrateCar(c) {
     if (Object.keys(s).length) c.setup = s;
     else delete c.setup;
   }
+}
+
+// Migration de l'histoire en 5 chapitres (v1) vers l'histoire en 9 chapitres (v2) : les identifiants d'épreuves
+// sont conservés ; seule la prime de sponsor de Port-Lumière (ancien chapitre 4) est rangée sous la clé du chapitre.
+function migrateStory(story) {
+  if ((story.v || 1) >= 2) return;
+  const d = story.done;
+  if (d.bonus_4 && !d.bonus_ville) d.bonus_ville = d.bonus_4;
+  delete d.bonus_4;
+  story.v = 2;
 }
 
 export function saveProfile(p) {

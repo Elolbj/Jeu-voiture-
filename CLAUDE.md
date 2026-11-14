@@ -32,5 +32,6 @@ Tout est procédural : aucun fichier image/son/modèle externe (seules les polic
 - `node tools/file-test.mjs "<script>"` : teste le fichier unique `dist/trajectoire.html` (après `npm run build`).
 - `npm test` : tours d'IA sur chaque circuit (simulation sans rendu). `node tools/physics-test.mjs` : mesures physiques (0-100, vitesse max…).
 - `node tools/compute-targets.mjs` : recalcule `src/data/targets.js` (temps cibles des permis et contre-la-montre).
+- `node tools/story-check.mjs` : vérifie la cohérence de l'histoire (circuits, voitures, PP, préalables, dialogues).
 - Les fichiers de travail vont dans `tools/scratch/` (ignoré par git). Python 3 + PIL est disponible pour assembler des captures.
 - Ne pas utiliser `pkill -f` avec un motif qui correspond à sa propre ligne de commande.
