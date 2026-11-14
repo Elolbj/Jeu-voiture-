@@ -26,7 +26,7 @@ export const LIVERIES = {
   none: { label: 'Aucune', price: 0 },
   stripes: { label: 'Double bande', price: 900 },
   side: { label: 'Filets latéraux', price: 700 },
-  racing: { label: 'Livrée course', price: 2600 },
+  racing: { label: 'Course', price: 2600 },
   split: { label: 'Bicolore', price: 1600 },
   gradient: { label: 'Dégradé', price: 2000 },
   chevron: { label: 'Chevrons', price: 1800 },

@@ -16,12 +16,12 @@ import { topBar } from './menuScreens.js';
 export const CUSTOMIZE_ICON = '<svg viewBox="0 0 24 24"><path d="M4 4h13v5H4zM17 6.5h3V12h-8.5v3" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="15" width="3" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
 
 const TABS = [['paint', 'Peinture'], ['livery', 'Livrée'], ['rims', 'Jantes'], ['details', 'Détails'], ['setup', 'Réglages']];
-// Vues du studio : orientation du plateau (0 = face à la caméra), hauteur, distance relative, point visé
+// Vues du studio : orientation du plateau (l'avant du modèle est en -Z), hauteur, distance relative, point visé
 const VIEWS = {
-  front: { yaw: -0.75, h: 1.5, d: 1.1, ty: 0.55 },
+  front: { yaw: Math.PI + 0.37, h: 1.5, d: 1.1, ty: 0.55 },
   side: { yaw: -Math.PI / 2 + 0.12, h: 1.15, d: 1.05, ty: 0.55 },
   wheel: { yaw: -Math.PI / 2 - 0.06, h: 0.5, d: 0.82, ty: 0.36 },
-  rear: { yaw: Math.PI - 0.72, h: 1.6, d: 1.05, ty: 0.6 },
+  rear: { yaw: 0.4, h: 1.6, d: 1.05, ty: 0.6 },
 };
 const TAB_VIEW = { paint: 'front', livery: 'side', rims: 'wheel', details: 'rear', setup: 'side' };
 const HINTS = {

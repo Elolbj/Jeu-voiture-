@@ -77,10 +77,10 @@
 .cz-mini b { font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .cz-mini i { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.5); display: inline-block; }
 
-/* Accueil : tuiles plus compactes quand elles sont nombreuses */
-.hub-menu:has(> .tile:nth-child(9)) { gap: 7px; top: 84px; }
-.hub-menu:has(> .tile:nth-child(9)) .tile { padding-top: 11px; padding-bottom: 11px; }
-.hub-menu:has(> .tile:nth-child(9)) .tile.big { padding-top: 15px; padding-bottom: 15px; }
+/* Accueil : tuiles plus compactes quand elles sont nombreuses, défilement si l'écran est trop bas */
+.hub-menu:has(> .tile:nth-child(9)) { gap: 6px; top: 80px; max-height: calc(100vh - 100px); overflow-y: auto; padding: 0 8px 4px 0; }
+.hub-menu:has(> .tile:nth-child(9)) .tile { padding-top: 9px; padding-bottom: 9px; flex-shrink: 0; }
+.hub-menu:has(> .tile:nth-child(9)) .tile.big { padding-top: 13px; padding-bottom: 13px; }
 
 @media (max-width: 900px) {
   .cz-panel { left: 12px; right: 12px; width: auto; top: 64px; bottom: 44vh; }
