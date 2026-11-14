@@ -406,7 +406,7 @@ export function showChapterEnd(app, chap, reward) {
 }
 
 // Épilogue : générique, bilan de carrière
-function showEnding(app) {
+export function showEnding(app) {
   const p = app.profile;
   const st = p.stats;
   const cast = ['doc', 'ines', 'gunther', 'aiko', 'lucie', 'viktor'].map((k) => {
@@ -417,7 +417,7 @@ function showEnding(app) {
   app.showroom.offsetX = 0;
   const el = h('div', { class: 'ending' },
     h('div', { class: 'end-title' }, 'FIN'),
-    h('div', { class: 'end-sub' }, `${p.name}, vainqueur du Trophée Trajectoire`),
+    h('div', { class: 'end-sub' }, `${p.name} remporte le Trophée Trajectoire`),
     h('div', { class: 'end-stats' },
       h('div', {}, h('b', {}, String(st.wins)), h('small', {}, 'victoires')),
       h('div', {}, h('b', {}, String(st.podiums)), h('small', {}, 'podiums')),
